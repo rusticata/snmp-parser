@@ -105,7 +105,7 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
 #[cfg(test)]
 mod tests {
     use snmp::*;
-    use nom::{IResult,Needed};
+    use nom::IResult;
 
 static SNMPV1_REQ: &'static [u8] = &[
     0x30, 0x26, 0x02, 0x01, 0x00, 0x04, 0x06, 0x70, 0x75, 0x62, 0x6c, 0x69,
@@ -116,8 +116,14 @@ static SNMPV1_REQ: &'static [u8] = &[
 
 #[test]
 fn test_snmp_v1_req() {
+    let empty = &b""[..];
     let bytes = SNMPV1_REQ;
-    let expected = IResult::Incomplete(Needed::Size(260));
+    let expected = IResult::Done(empty,SnmpMessage{
+        version: 0,
+        community: b"public",
+        pdu_type: 0,
+        pdu: &SNMPV1_REQ[15..],
+    });
     let res = parse_snmp_v1(&bytes);
     assert_eq!(res, expected);
 }
