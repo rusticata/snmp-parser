@@ -34,8 +34,14 @@ impl<'a> Iterator for SnmpPduIterator<'a> {
 }
 
 impl<'a> SnmpPdu<'a> {
-    pub fn to_vars(&'a self) -> SnmpPduIterator<'a> {
+    pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
         SnmpPduIterator{ obj:&self.var, idx:0 }
+    }
+}
+
+impl<'a> SnmpMessage<'a> {
+    pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
+        SnmpPduIterator{ obj:&self.parsed_pdu.as_ref().unwrap().var, idx:0 }
     }
 }
 
@@ -45,7 +51,7 @@ pub struct SnmpMessage<'a> {
     pub community: &'a[u8],
     pub pdu_type: u8,
     pub raw_pdu: &'a[u8],
-    pub parsed_pdu: Option<SnmpPdu<'a>>,
+    parsed_pdu: Option<SnmpPdu<'a>>,
 }
 
 impl<'a> SnmpMessage<'a> {
@@ -188,7 +194,7 @@ fn test_snmp_v1_req() {
             // let ref x = (*r).parsed_pdu;
             // let y = x.as_ref().unwrap();
             // let _ = y.to_vars();
-            for ref v in r.parsed_pdu.as_ref().unwrap().to_vars() {
+            for ref v in r.vars_iter() {
                 println!("v: {:?}",v);
             }
         },
