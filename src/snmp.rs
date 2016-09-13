@@ -1,4 +1,3 @@
-use std;
 use std::str;
 use nom::{IResult,ErrorKind,Err};
 use der_parser::der::*;
@@ -16,32 +15,26 @@ pub struct SnmpPdu<'a> {
 }
 
 pub struct SnmpPduIterator<'a> {
-    pub obj: &'a DerObject<'a>,
-    pub idx: usize,
+    it: DerObjectRefIterator<'a>,
 }
 
 impl<'a> Iterator for SnmpPduIterator<'a> {
     type Item = &'a DerObject<'a>;
     fn next(&mut self) -> Option<&'a DerObject<'a>> {
-        let res = match *self.obj {
-                DerObject::Sequence(ref v) if self.idx < v.len() => Some(&v[self.idx]),
-                DerObject::Set(ref v) if self.idx < v.len() => Some(&v[self.idx]),
-                _ => None,
-            };
-        self.idx += 1;
-        res
+        self.it.next()
     }
 }
 
 impl<'a> SnmpPdu<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
-        SnmpPduIterator{ obj:&self.var, idx:0 }
+        SnmpPduIterator{ it:self.var.ref_iter() }
     }
 }
 
 impl<'a> SnmpMessage<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
-        SnmpPduIterator{ obj:&self.parsed_pdu.as_ref().unwrap().var, idx:0 }
+        let obj = &self.parsed_pdu.as_ref().unwrap().var;
+        SnmpPduIterator{ it:obj.ref_iter() }
     }
 }
 
