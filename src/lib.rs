@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate nom;
 
-extern crate tls_parser;
+extern crate der_parser;
 
 pub use snmp::*;
 #[macro_use]

@@ -6,5 +6,8 @@ authors = ["Pierre Chifflier <chifflier@wzdftpd.net>"]
 [dependencies]
 libc = "0.2.0"
 nom = "1.2.4"
-tls-parser = { git = "ssh://git@git.wzdftpd.net:22/tls-parser-rs.git" }
+der-parser = { git = "ssh://git@git.wzdftpd.net:22/der-parser-rs.git" }
+
+# [dependencies.der-parser]
+# path = "/home/pollux/CODE/RUST/der-parser"
 

@@ -1,13 +1,51 @@
+use std;
 use std::str;
 use nom::{IResult,ErrorKind,Err};
-use tls_parser::der::*;
+use der_parser::der::*;
+
+#[derive(Debug,Clone,PartialEq)]
+pub struct SnmpPdu<'a> {
+    pub req_id: u32,
+    pub err: u32,
+    pub err_index: u32,
+//    pub var: &'a[u8],
+//    pub req_id: DerObject<'a>,
+//    pub err: DerObject<'a>,
+//    pub err_index: DerObject<'a>,
+    pub var: DerObject<'a>,
+}
+
+pub struct SnmpPduIterator<'a> {
+    pub obj: &'a DerObject<'a>,
+    pub idx: usize,
+}
+
+impl<'a> Iterator for SnmpPduIterator<'a> {
+    type Item = &'a DerObject<'a>;
+    fn next(&mut self) -> Option<&'a DerObject<'a>> {
+        let res = match *self.obj {
+                DerObject::Sequence(ref v) if self.idx < v.len() => Some(&v[self.idx]),
+                DerObject::Set(ref v) if self.idx < v.len() => Some(&v[self.idx]),
+                _ => None,
+            };
+        self.idx += 1;
+        res
+    }
+}
+
+impl<'a> SnmpPdu<'a> {
+    pub fn to_vars(&'a self) -> SnmpPduIterator<'a> {
+        SnmpPduIterator{ obj:&self.var, idx:0 }
+    }
+}
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpMessage<'a> {
     pub version: u32,
     pub community: &'a[u8],
     pub pdu_type: u8,
-    pub pdu: &'a[u8],
+    pub raw_pdu: &'a[u8],
+    pub parsed_pdu: Option<SnmpPdu<'a>>,
 }
 
 impl<'a> SnmpMessage<'a> {
@@ -73,30 +111,40 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
                 _ => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
             };
             // XXX PDU type is inside the context-specific field !
-            let test = chain!(pdu,
-                req_id: parse_der ~
-                err: parse_der ~
-                err_index: parse_der ~
-                var_bindings: parse_der,
+            let pdu_res = chain!(pdu,
+                req_id: parse_der_integer ~
+                err: parse_der_integer ~
+                err_index: parse_der_integer ~
+                var_bindings: parse_der_sequence,
                 || {
-                    println!("req_id: {:?}",req_id);
-                    println!("err: {:?}",err);
-                    println!("err_index: {:?}",err_index);
+                    println!("req_id: {:?}",req_id.as_u32().unwrap());
+                    println!("err: {:?}",err.as_u32().unwrap());
+                    println!("err_index: {:?}",err_index.as_u32().unwrap());
                     println!("var_bindings: {:?}",var_bindings);
-                    ()
+                    SnmpPdu {
+                        req_id:req_id.as_u32().unwrap(),
+                        err:err.as_u32().unwrap(),
+                        err_index:err_index.as_u32().unwrap(),
+                        var:var_bindings
+                    }
                 });
-            println!("chain: {:?}",test);
-            println!("SNMP: v={}, c={:?}",vers,str::from_utf8(community).unwrap());
-            println!("PDU: type={}, {:?}", pdu_type, v[2]);
-            //println!("res_pdu_type: {:?}", res_pdu_type);
-            IResult::Done(i,
-                SnmpMessage {
-                    version:vers,
-                    community:community,
-                    pdu_type:pdu_type,
-                    pdu:pdu,
-                }
-            )
+            match pdu_res {
+                IResult::Done(_,ref r) => {
+                    println!("SNMP: v={}, c={:?}",vers,str::from_utf8(community).unwrap());
+                    println!("PDU: type={}, {:?}", pdu_type, pdu_res);
+                    //println!("res_pdu_type: {:?}", res_pdu_type);
+                    IResult::Done(i,
+                        SnmpMessage {
+                            version:vers,
+                            community:community,
+                            pdu_type:pdu_type,
+                            raw_pdu:pdu,
+                            parsed_pdu:Some((*r).clone()),
+                        }
+                    )
+                },
+                _ => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
+            }
         },
         _ => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
     }
@@ -105,6 +153,7 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
 #[cfg(test)]
 mod tests {
     use snmp::*;
+    use der_parser::der::*;
     use nom::IResult;
 
 static SNMPV1_REQ: &'static [u8] = &[
@@ -122,9 +171,29 @@ fn test_snmp_v1_req() {
         version: 0,
         community: b"public",
         pdu_type: 0,
-        pdu: &SNMPV1_REQ[15..],
+        raw_pdu: &SNMPV1_REQ[15..],
+        parsed_pdu:Some(SnmpPdu{
+            req_id:38,
+            err:0,
+            err_index:0,
+            var:DerObject::Sequence( vec![
+                    DerObject::Sequence(vec![DerObject::OID(vec![1, 3, 6, 1, 2, 1, 1, 2, 0]), DerObject::Null]),
+            ],),
+        }),
     });
     let res = parse_snmp_v1(&bytes);
+    match &res {
+        &IResult::Done(_,ref r) => {
+            println!("r: {:?}",r);
+            // let ref x = (*r).parsed_pdu;
+            // let y = x.as_ref().unwrap();
+            // let _ = y.to_vars();
+            for ref v in r.parsed_pdu.as_ref().unwrap().to_vars() {
+                println!("v: {:?}",v);
+            }
+        },
+        _ => (),
+    };
     assert_eq!(res, expected);
 }
 
