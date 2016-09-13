@@ -1,0 +1,10 @@
+[package]
+name = "snmp-parser"
+version = "0.1.0"
+authors = ["Pierre Chifflier <chifflier@wzdftpd.net>"]
+
+[dependencies]
+libc = "0.2.0"
+nom = "1.2.4"
+tls-parser = { git = "ssh://git@git.wzdftpd.net:22/tls-parser-rs.git" }
+
