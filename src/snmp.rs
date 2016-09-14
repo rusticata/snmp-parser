@@ -3,7 +3,7 @@ use nom::{IResult,ErrorKind,Err};
 use der_parser::der::*;
 
 #[derive(Debug,Clone,PartialEq)]
-pub struct SnmpPdu<'a> {
+pub struct RawSnmpPdu<'a> {
     pub req_id: u32,
     pub err: u32,
     pub err_index: u32,
@@ -25,7 +25,7 @@ impl<'a> Iterator for SnmpPduIterator<'a> {
     }
 }
 
-impl<'a> SnmpPdu<'a> {
+impl<'a> RawSnmpPdu<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
         SnmpPduIterator{ it:self.var.ref_iter() }
     }
@@ -44,7 +44,7 @@ pub struct SnmpMessage<'a> {
     pub community: &'a[u8],
     pub pdu_type: u8,
     pub raw_pdu: &'a[u8],
-    parsed_pdu: Option<SnmpPdu<'a>>,
+    parsed_pdu: Option<RawSnmpPdu<'a>>,
 }
 
 impl<'a> SnmpMessage<'a> {
@@ -75,7 +75,7 @@ impl<'a> SnmpMessage<'a> {
 //                        DerObject::OctetString(s) => s,
 //                        _ => panic!("boo"),
 //                    };
-//                    println!("SNMP: v={}, c={:?}",vers,str::from_utf8(community).unwrap());
+//                    debug!("SNMP: v={}, c={:?}",vers,str::from_utf8(community).unwrap());
 //                    SnmpMessage {
 //                        version:vers,
 //                        community:community,
@@ -116,11 +116,11 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
                 err_index: parse_der_integer ~
                 var_bindings: parse_der_sequence,
                 || {
-                    println!("req_id: {:?}",req_id.as_u32().unwrap());
-                    println!("err: {:?}",err.as_u32().unwrap());
-                    println!("err_index: {:?}",err_index.as_u32().unwrap());
-                    println!("var_bindings: {:?}",var_bindings);
-                    SnmpPdu {
+                    debug!("req_id: {:?}",req_id.as_u32().unwrap());
+                    debug!("err: {:?}",err.as_u32().unwrap());
+                    debug!("err_index: {:?}",err_index.as_u32().unwrap());
+                    debug!("var_bindings: {:?}",var_bindings);
+                    RawSnmpPdu {
                         req_id:req_id.as_u32().unwrap(),
                         err:err.as_u32().unwrap(),
                         err_index:err_index.as_u32().unwrap(),
@@ -129,9 +129,9 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
                 });
             match pdu_res {
                 IResult::Done(_,ref r) => {
-                    println!("SNMP: v={}, c={:?}",vers,str::from_utf8(community).unwrap());
-                    println!("PDU: type={}, {:?}", pdu_type, pdu_res);
-                    //println!("res_pdu_type: {:?}", res_pdu_type);
+                    debug!("SNMP: v={}, c={:?}",vers,str::from_utf8(community).unwrap());
+                    debug!("PDU: type={}, {:?}", pdu_type, pdu_res);
+                    //debug!("res_pdu_type: {:?}", res_pdu_type);
                     IResult::Done(i,
                         SnmpMessage {
                             version:vers,
@@ -154,6 +154,7 @@ mod tests {
     use snmp::*;
     use der_parser::der::*;
     use nom::IResult;
+    extern crate env_logger;
 
 static SNMPV1_REQ: &'static [u8] = &[
     0x30, 0x26, 0x02, 0x01, 0x00, 0x04, 0x06, 0x70, 0x75, 0x62, 0x6c, 0x69,
@@ -164,6 +165,7 @@ static SNMPV1_REQ: &'static [u8] = &[
 
 #[test]
 fn test_snmp_v1_req() {
+    let _ = env_logger::init();
     let empty = &b""[..];
     let bytes = SNMPV1_REQ;
     let expected = IResult::Done(empty,SnmpMessage{
@@ -171,7 +173,7 @@ fn test_snmp_v1_req() {
         community: b"public",
         pdu_type: 0,
         raw_pdu: &SNMPV1_REQ[15..],
-        parsed_pdu:Some(SnmpPdu{
+        parsed_pdu:Some(RawSnmpPdu{
             req_id:38,
             err:0,
             err_index:0,
@@ -183,12 +185,12 @@ fn test_snmp_v1_req() {
     let res = parse_snmp_v1(&bytes);
     match &res {
         &IResult::Done(_,ref r) => {
-            println!("r: {:?}",r);
+            debug!("r: {:?}",r);
             // let ref x = (*r).parsed_pdu;
             // let y = x.as_ref().unwrap();
             // let _ = y.to_vars();
             for ref v in r.vars_iter() {
-                println!("v: {:?}",v);
+                debug!("v: {:?}",v);
             }
         },
         _ => (),
