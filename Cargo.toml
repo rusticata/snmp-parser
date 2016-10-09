@@ -8,8 +8,5 @@ libc = "0.2.0"
 nom = "1.2.4"
 log = "*"
 env_logger = "*"
-der-parser = { git = "ssh://git@git.wzdftpd.net:22/der-parser-rs.git" }
-
-# [dependencies.der-parser]
-# path = "/home/pollux/CODE/RUST/der-parser"
+der-parser = { git = "https://github.com/rusticata/der-parser.git" }
 
