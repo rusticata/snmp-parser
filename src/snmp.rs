@@ -2,7 +2,7 @@ use std::{mem,str};
 use nom::{IResult,ErrorKind,Err};
 use der_parser::der::*;
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 #[repr(u8)]
 pub enum PduType {
     GetRequest = 0,
@@ -64,7 +64,7 @@ impl<'a> SnmpMessage<'a> {
 pub struct SnmpMessage<'a> {
     pub version: u32,
     pub community: &'a[u8],
-    pub pdu_type: u8,
+    pub pdu_type: PduType,
     pub raw_pdu: &'a[u8],
     parsed_pdu: Option<RawSnmpPdu<'a>>,
 }
@@ -119,12 +119,17 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
             //     [DerObject::Integer(i), DerObject::OctetString(s), _] => (i,s),
             //     _ => panic!("boo"),
             // }
-            let (vers,community,(pdu_type,pdu)) =
+            let (vers,community,(pdu_type_int,pdu)) =
                 match (&v[0],&v[1],&v[2]) {
                     (&DerObject::Integer(i),&DerObject::OctetString(s),&DerObject::ContextSpecific(tag,c)) =>
                         (i as u32, s, (tag,c)),
                     _ => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
                 };
+            let pdu_type = match PduType::from_u8(pdu_type_int) {
+                None => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
+                Some(t) => t,
+            };
+            // XXX this is only valid for some PDU types
             let pdu_res = chain!(pdu,
                 req_id: parse_der_integer ~
                 err: parse_der_integer ~
@@ -180,7 +185,7 @@ fn test_snmp_v1_req() {
     let expected = IResult::Done(empty,SnmpMessage{
         version: 0,
         community: b"public",
-        pdu_type: 0,
+        pdu_type: PduType::GetRequest,
         raw_pdu: &SNMPV1_REQ[15..],
         parsed_pdu:Some(RawSnmpPdu{
             req_id:38,
@@ -195,7 +200,7 @@ fn test_snmp_v1_req() {
     match &res {
         &IResult::Done(_,ref r) => {
             // debug!("r: {:?}",r);
-            debug!("SNMP: v={}, c={:?}, pdu_type={:?}",r.version,r.get_community(),PduType::from_u8(r.pdu_type).unwrap());
+            debug!("SNMP: v={}, c={:?}, pdu_type={:?}",r.version,r.get_community(),r.pdu_type);
             // debug!("PDU: type={}, {:?}", pdu_type, pdu_res);
             for ref v in r.vars_iter() {
                 debug!("v: {:?}",v);
