@@ -5,7 +5,7 @@ authors = ["Pierre Chifflier <chifflier@wzdftpd.net>"]
 
 [dependencies]
 libc = "0.2.0"
-nom = "1.2.4"
+nom = {version = "^2.0", features = ["verbose-errors"]}
 log = "*"
 env_logger = "*"
 der-parser = { git = "https://github.com/rusticata/der-parser.git" }
