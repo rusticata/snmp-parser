@@ -77,9 +77,9 @@ impl<'a> SnmpMessage<'a> {
 
 
 // named!(pub parse_snmp_v1<SnmpMessage>,
-//    chain!(
-//        der: parse_der,
-//        || {
+//    do_parse!(
+//        der: parse_der >>
+//        (
 //            match der {
 //                DerObject::Sequence(ref v) => {
 //                    if v.len() != 3 { panic!("boo"); };
@@ -105,7 +105,7 @@ impl<'a> SnmpMessage<'a> {
 //                },
 //                _ => panic!("boo"),
 //            }
-//    })
+//    ))
 // );
 
 pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
@@ -130,19 +130,19 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
                 Some(t) => t,
             };
             // XXX this is only valid for some PDU types
-            let pdu_res = chain!(pdu,
-                req_id: parse_der_integer ~
-                err: parse_der_integer ~
-                err_index: parse_der_integer ~
-                var_bindings: parse_der_sequence,
-                || {
+            let pdu_res = do_parse!(pdu,
+                req_id:       parse_der_integer >>
+                err:          parse_der_integer >>
+                err_index:    parse_der_integer >>
+                var_bindings: parse_der_sequence >>
+                (
                     RawSnmpPdu {
                         req_id:req_id.as_u32().unwrap(),
                         err:err.as_u32().unwrap(),
                         err_index:err_index.as_u32().unwrap(),
                         var:var_bindings
                     }
-                });
+                ));
             match pdu_res {
                 IResult::Done(_,ref r) => {
                     IResult::Done(i,
