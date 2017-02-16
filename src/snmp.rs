@@ -2,6 +2,9 @@ use std::{mem,str};
 use nom::{IResult,ErrorKind,Err};
 use der_parser::der::*;
 
+use enum_primitive::FromPrimitive;
+
+enum_from_primitive! {
 #[derive(Debug,PartialEq)]
 #[repr(u8)]
 pub enum PduType {
@@ -9,19 +12,12 @@ pub enum PduType {
     GetNextRequest = 1,
     Response = 2,
     SetRequest = 3,
-    /// Obsolete, was the old Trap-PDU in SNMPv1
-    TrapV1 = 4,
+    TrapV1 = 4, // Obsolete, was the old Trap-PDU in SNMPv1
     GetBulkRequest = 5,
     InformRequest = 6,
     TrapV2 = 7,
     Report = 8,
 }
-
-impl PduType {
-    pub fn from_u8(n: u8) -> Option<PduType> {
-        if n <= 8 { Some(unsafe{ mem::transmute(n) }) }
-        else { None }
-    }
 }
 
 #[derive(Debug,Clone,PartialEq)]
