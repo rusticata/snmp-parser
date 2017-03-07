@@ -28,7 +28,7 @@ pub enum PduType {
 }
 
 #[derive(Debug,Clone,PartialEq)]
-pub struct RawSnmpPdu<'a> {
+pub struct SnmpRequestPdu<'a> {
     pub req_id: u32,
     pub err: u32,
     pub err_index: u32,
@@ -50,7 +50,7 @@ impl<'a> Iterator for SnmpPduIterator<'a> {
     }
 }
 
-impl<'a> RawSnmpPdu<'a> {
+impl<'a> SnmpRequestPdu<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
         SnmpPduIterator{ it:self.var.ref_iter() }
     }
@@ -69,7 +69,7 @@ pub struct SnmpMessage<'a> {
     pub community: &'a[u8],
     pub pdu_type: PduType,
     pub raw_pdu: &'a[u8],
-    parsed_pdu: Option<RawSnmpPdu<'a>>,
+    parsed_pdu: Option<SnmpRequestPdu<'a>>,
 }
 
 impl<'a> SnmpMessage<'a> {
@@ -92,13 +92,20 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
             Some(t) => t,
         };
         let pdu = v[2].content.as_slice().unwrap();
+        match pdu_type {
+            PduType::GetRequest |
+            PduType::GetNextRequest |
+            PduType::Response |
+            PduType::SetRequest => (),
+            _                   => { return IResult::Error(Err::Code(ErrorKind::Custom(131))); },
+        };
         let pdu_res = do_parse!(pdu,
                                 req_id:       parse_der_integer >>
                                 err:          parse_der_integer >>
                                 err_index:    parse_der_integer >>
                                 var_bindings: parse_der_sequence >>
                                 (
-                                    RawSnmpPdu {
+                                    SnmpRequestPdu {
                                         req_id:    req_id.content.as_u32().unwrap(),
                                         err:       err.content.as_u32().unwrap(),
                                         err_index: err_index.content.as_u32().unwrap(),
@@ -161,7 +168,7 @@ fn test_snmp_v1_req() {
         community: b"public",
         pdu_type: PduType::GetRequest,
         raw_pdu: &SNMPV1_REQ[15..],
-        parsed_pdu:Some(RawSnmpPdu{
+        parsed_pdu:Some(SnmpRequestPdu{
             req_id:38,
             err:0,
             err_index:0,
