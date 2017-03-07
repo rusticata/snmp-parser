@@ -27,6 +27,20 @@ pub enum PduType {
 }
 }
 
+enum_from_primitive! {
+#[derive(Debug,PartialEq)]
+#[repr(u8)]
+pub enum TrapType {
+    ColdStart = 0,
+    WarmStart = 1,
+    LinkDown = 2,
+    LinkUp = 3,
+    AuthenticationFailure = 4,
+    EgpNeighborLoss = 5,
+    EnterpriseSpecific = 6,
+}
+}
+
 #[derive(Debug,PartialEq)]
 pub struct SnmpRequestPdu<'a> {
     pub req_id: u32,
@@ -37,6 +51,22 @@ pub struct SnmpRequestPdu<'a> {
 //    pub err: DerObject<'a>,
 //    pub err_index: DerObject<'a>,
     pub var: DerObject<'a>,
+}
+
+#[derive(Debug,PartialEq)]
+pub struct SnmpTrapPdu<'a> {
+    enterprise: DerObject<'a>,
+    agent_addr: DerObject<'a>,  // NetworkAddress
+    generic_trap: DerObject<'a>, // Integer
+    specific_trap: DerObject<'a>, // Integer,
+    timestamp: DerObject<'a>, // TimeTicks
+    pub var: DerObject<'a>,
+}
+
+#[derive(Debug,PartialEq)]
+pub enum SnmpPdu<'a> {
+    RequestV1(SnmpRequestPdu<'a>),
+    TrapV1(SnmpTrapPdu<'a>),
 }
 
 pub struct SnmpPduIterator<'a> {
@@ -58,7 +88,11 @@ impl<'a> SnmpRequestPdu<'a> {
 
 impl<'a> SnmpMessage<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
-        let obj = &self.parsed_pdu.as_ref().unwrap().var;
+        let obj = match self.parsed_pdu {
+            Some(SnmpPdu::RequestV1(ref pdu)) => &pdu.var,
+            Some(SnmpPdu::TrapV1(ref pdu))    => &pdu.var,
+            _ => panic!("Attempt to iterator on an empty Pdu"),
+        };
         SnmpPduIterator{ it:obj.ref_iter() }
     }
 }
@@ -69,7 +103,7 @@ pub struct SnmpMessage<'a> {
     pub community: &'a[u8],
     pub pdu_type: PduType,
     pub raw_pdu: &'a[u8],
-    parsed_pdu: Option<SnmpRequestPdu<'a>>,
+    parsed_pdu: Option<SnmpPdu<'a>>,
 }
 
 impl<'a> SnmpMessage<'a> {
@@ -78,6 +112,48 @@ impl<'a> SnmpMessage<'a> {
     }
 }
 
+
+
+
+pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+    do_parse!(pdu,
+              req_id:       parse_der_integer >>
+              err:          parse_der_integer >>
+              err_index:    parse_der_integer >>
+              var_bindings: parse_der_sequence >>
+              (
+                  SnmpPdu::RequestV1(
+                      SnmpRequestPdu {
+                          req_id:    req_id.content.as_u32().unwrap(),
+                          err:       err.content.as_u32().unwrap(),
+                          err_index: err_index.content.as_u32().unwrap(),
+                          var:       var_bindings
+                      }
+                  )
+              ))
+}
+
+pub fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+    do_parse!(pdu,
+              enterprise:    parse_der_oid >>
+              agent_addr:    parse_der >> // XXX NetworkAddress
+              generic_trap:  parse_der_integer >>
+              specific_trap: parse_der_integer >>
+              timestamp:     parse_der >> // XXX TimeTicks
+              var_bindings:  parse_der_sequence >>
+              (
+                  SnmpPdu::TrapV1(
+                      SnmpTrapPdu {
+                          enterprise:    enterprise,
+                          agent_addr:    agent_addr,
+                          generic_trap:  generic_trap,
+                          specific_trap: specific_trap,
+                          timestamp:     timestamp,
+                          var:           var_bindings
+                      }
+                  )
+              ))
+}
 
 /// Caller is responsible to provide a DerObject of type Sequence, containing
 /// a sequence (Integer,OctetString,Unknown)
@@ -92,26 +168,14 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
             Some(t) => t,
         };
         let pdu = v[2].content.as_slice().unwrap();
-        match pdu_type {
+        let pdu_res = match pdu_type {
             PduType::GetRequest |
             PduType::GetNextRequest |
             PduType::Response |
-            PduType::SetRequest => (),
+            PduType::SetRequest => parse_snmp_v1_request_pdu(pdu),
+            PduType::TrapV1     => parse_snmp_v1_trap_pdu(pdu),
             _                   => { return IResult::Error(Err::Code(ErrorKind::Custom(131))); },
         };
-        let pdu_res = do_parse!(pdu,
-                                req_id:       parse_der_integer >>
-                                err:          parse_der_integer >>
-                                err_index:    parse_der_integer >>
-                                var_bindings: parse_der_sequence >>
-                                (
-                                    SnmpRequestPdu {
-                                        req_id:    req_id.content.as_u32().unwrap(),
-                                        err:       err.content.as_u32().unwrap(),
-                                        err_index: err_index.content.as_u32().unwrap(),
-                                        var:       var_bindings
-                                    }
-                                ));
         match pdu_res {
             IResult::Done(rem,r) => {
                 IResult::Done(rem,
@@ -151,12 +215,7 @@ mod tests {
     use nom::IResult;
     extern crate env_logger;
 
-static SNMPV1_REQ: &'static [u8] = &[
-    0x30, 0x26, 0x02, 0x01, 0x00, 0x04, 0x06, 0x70, 0x75, 0x62, 0x6c, 0x69,
-    0x63, 0xa0, 0x19, 0x02, 0x01, 0x26, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00,
-    0x30, 0x0e, 0x30, 0x0c, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x02, 0x01, 0x01,
-    0x02, 0x00, 0x05, 0x00
-];
+static SNMPV1_REQ: &'static [u8] = include_bytes!("../assets/snmpv1_req.bin");
 
 #[test]
 fn test_snmp_v1_req() {
@@ -168,19 +227,21 @@ fn test_snmp_v1_req() {
         community: b"public",
         pdu_type: PduType::GetRequest,
         raw_pdu: &SNMPV1_REQ[15..],
-        parsed_pdu:Some(SnmpRequestPdu{
-            req_id:38,
-            err:0,
-            err_index:0,
-            var:DerObject::from_obj(DerObjectContent::Sequence( vec![
-                DerObject::from_obj(
-                    DerObjectContent::Sequence(vec![
-                        DerObject::from_obj(DerObjectContent::OID(vec![1, 3, 6, 1, 2, 1, 1, 2, 0])),
-                        DerObject::from_obj(DerObjectContent::Null)
-                    ]),
-                ),
-            ],)),
-        }),
+        parsed_pdu:Some(SnmpPdu::RequestV1(
+            SnmpRequestPdu{
+                req_id:38,
+                err:0,
+                err_index:0,
+                var:DerObject::from_obj(DerObjectContent::Sequence( vec![
+                    DerObject::from_obj(
+                        DerObjectContent::Sequence(vec![
+                            DerObject::from_obj(DerObjectContent::OID(vec![1, 3, 6, 1, 2, 1, 1, 2, 0])),
+                            DerObject::from_obj(DerObjectContent::Null)
+                        ]),
+                    ),
+                ],)),
+            })
+        ),
     });
     let res = parse_snmp_v1(&bytes);
     match &res {
@@ -197,5 +258,15 @@ fn test_snmp_v1_req() {
     assert_eq!(res, expected);
 }
 
+static SNMPV1_TRAP_COLDSTART: &'static [u8] = include_bytes!("../assets/snmpv1_trap_coldstart.bin");
+
+#[test]
+fn test_snmp_v1_trap_coldstart() {
+    let _ = env_logger::init();
+    let empty = &b""[..];
+    let bytes = SNMPV1_TRAP_COLDSTART;
+
+    println!("{:?}", parse_snmp_v1(bytes));
+}
 
 }
