@@ -27,7 +27,7 @@ pub enum PduType {
 }
 }
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug,PartialEq)]
 pub struct SnmpRequestPdu<'a> {
     pub req_id: u32,
     pub err: u32,
