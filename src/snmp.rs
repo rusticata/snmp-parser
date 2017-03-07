@@ -1,4 +1,11 @@
-use std::{mem,str};
+//! SNMP Parser
+//!
+//! SNMP is defined in the following RFCs:
+//!   - [RFC1157](https://tools.ietf.org/html/rfc1157): SNMP v1
+//!   - [RFC3416](https://tools.ietf.org/html/rfc3416): SNMP v2
+//!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
+
+use std::str;
 use nom::{IResult,ErrorKind,Err};
 use der_parser::der::*;
 
@@ -72,90 +79,61 @@ impl<'a> SnmpMessage<'a> {
 }
 
 
-// named!(pub parse_snmp_v1<SnmpMessage>,
-//    do_parse!(
-//        der: parse_der >>
-//        (
-//            match der {
-//                DerObject::Sequence(ref v) => {
-//                    if v.len() != 3 { panic!("boo"); };
-//                    // // XXX following lines fail with error:
-//                    // // XXX error: slice pattern syntax is experimental (see issue #23121)
-//                    // match v.as_slice() {
-//                    //     [DerObject::Integer(i), DerObject::OctetString(s), _] => (i,s),
-//                    //     _ => panic!("boo"),
-//                    // }
-//                    let vers = match v[0] {
-//                        DerObject::Integer(i) => i as u32,
-//                        _ => panic!("boo"),
-//                    };
-//                    let community = match v[1] {
-//                        DerObject::OctetString(s) => s,
-//                        _ => panic!("boo"),
-//                    };
-//                    debug!("SNMP: v={}, c={:?}",vers,str::from_utf8(community).unwrap());
-//                    SnmpMessage {
-//                        version:vers,
-//                        community:community,
-//                    }
-//                },
-//                _ => panic!("boo"),
-//            }
-//    ))
-// );
+/// Caller is responsible to provide a DerObject of type Sequence, containing
+/// a sequence (Integer,OctetString,Unknown)
+pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMessage<'a>> {
+    if let DerObjectContent::Sequence(ref v) = obj.content {
+        if v.len() != 3 { return IResult::Error(Err::Code(ErrorKind::Custom(128))); };
+        let vers = v[0].content.as_u32().unwrap();
+        let community = v[1].content.as_slice().unwrap();
+        let pdu_type_int = v[2].tag;
+        let pdu_type = match PduType::from_u8(pdu_type_int) {
+            None => { return IResult::Error(Err::Code(ErrorKind::Custom(130))); },
+            Some(t) => t,
+        };
+        let pdu = v[2].content.as_slice().unwrap();
+        let pdu_res = do_parse!(pdu,
+                                req_id:       parse_der_integer >>
+                                err:          parse_der_integer >>
+                                err_index:    parse_der_integer >>
+                                var_bindings: parse_der_sequence >>
+                                (
+                                    RawSnmpPdu {
+                                        req_id:    req_id.content.as_u32().unwrap(),
+                                        err:       err.content.as_u32().unwrap(),
+                                        err_index: err_index.content.as_u32().unwrap(),
+                                        var:       var_bindings
+                                    }
+                                ));
+        match pdu_res {
+            IResult::Done(rem,r) => {
+                IResult::Done(rem,
+                              SnmpMessage{
+                                  version: vers,
+                                  community: community,
+                                  pdu_type: pdu_type,
+                                  raw_pdu: pdu,
+                                  parsed_pdu: Some(r),
+                              }
+                             )
+            },
+            _ => { return IResult::Error(Err::Code(ErrorKind::Custom(132))); },
+        }
+    } else {
+        IResult::Error(Err::Code(ErrorKind::Custom(133)))
+    }
+}
 
 pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
-    let der = parse_der(i);
-    match der {
-        IResult::Done(i,DerObject::Sequence(ref v)) => {
-            if v.len() != 3 { return IResult::Error(Err::Code(ErrorKind::Custom(128))); };
-            // // XXX following lines fail with error:
-            // // XXX error: slice pattern syntax is experimental (see issue #23121)
-            // match v.as_slice() {
-            //     [DerObject::Integer(i), DerObject::OctetString(s), _] => (i,s),
-            //     _ => panic!("boo"),
-            // }
-            let (vers,community,(pdu_type_int,pdu)) =
-                match (&v[0],&v[1],&v[2]) {
-                    (&DerObject::Integer(i),&DerObject::OctetString(s),&DerObject::ContextSpecific(tag,c)) =>
-                        (i as u32, s, (tag,c)),
-                    _ => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
-                };
-            let pdu_type = match PduType::from_u8(pdu_type_int) {
-                None => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
-                Some(t) => t,
-            };
-            // XXX this is only valid for some PDU types
-            let pdu_res = do_parse!(pdu,
-                req_id:       parse_der_integer >>
-                err:          parse_der_integer >>
-                err_index:    parse_der_integer >>
-                var_bindings: parse_der_sequence >>
-                (
-                    RawSnmpPdu {
-                        req_id:req_id.as_u32().unwrap(),
-                        err:err.as_u32().unwrap(),
-                        err_index:err_index.as_u32().unwrap(),
-                        var:var_bindings
-                    }
-                ));
-            match pdu_res {
-                IResult::Done(_,ref r) => {
-                    IResult::Done(i,
-                        SnmpMessage {
-                            version:vers,
-                            community:community,
-                            pdu_type:pdu_type,
-                            raw_pdu:pdu,
-                            parsed_pdu:Some((*r).clone()),
-                        }
-                    )
-                },
-                _ => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
-            }
-        },
-        _ => { return IResult::Error(Err::Code(ErrorKind::Custom(128))); },
-    }
+    flat_map!(
+        i,
+        parse_der_sequence_defined!(
+            parse_der_integer,
+            parse_der_octetstring,
+            parse_der // XXX type is ANY
+        ),
+        parse_snmp_v1_content
+    )
 }
 
 #[cfg(test)]
@@ -187,9 +165,14 @@ fn test_snmp_v1_req() {
             req_id:38,
             err:0,
             err_index:0,
-            var:DerObject::Sequence( vec![
-                    DerObject::Sequence(vec![DerObject::OID(vec![1, 3, 6, 1, 2, 1, 1, 2, 0]), DerObject::Null]),
-            ],),
+            var:DerObject::from_obj(DerObjectContent::Sequence( vec![
+                DerObject::from_obj(
+                    DerObjectContent::Sequence(vec![
+                        DerObject::from_obj(DerObjectContent::OID(vec![1, 3, 6, 1, 2, 1, 1, 2, 0])),
+                        DerObject::from_obj(DerObjectContent::Null)
+                    ]),
+                ),
+            ],)),
         }),
     });
     let res = parse_snmp_v1(&bytes);

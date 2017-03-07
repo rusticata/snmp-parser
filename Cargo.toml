@@ -5,8 +5,12 @@ authors = ["Pierre Chifflier <chifflier@wzdftpd.net>"]
 
 [dependencies]
 nom = {version = "^2.0", features = ["verbose-errors"]}
-log = "*"
-env_logger = "*"
-enum_primitive = "0.1.0"
-der-parser = { git = "https://github.com/rusticata/der-parser.git" }
+log = "0.3"
+env_logger = "0.4"
+enum_primitive = "^0.1"
+rusticata-macros = "^0"
+der-parser = "^0"
+
+# [dependencies.der-parser]
+# path = "../der-parser"
 
