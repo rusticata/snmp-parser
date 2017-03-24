@@ -2,6 +2,7 @@
 //!
 //! SNMP is defined in the following RFCs:
 //!   - [RFC1157](https://tools.ietf.org/html/rfc1157): SNMP v1
+//!   - [RFC1902](https://tools.ietf.org/html/rfc1902): SNMP v2 SMI
 //!   - [RFC3416](https://tools.ietf.org/html/rfc3416): SNMP v2
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
 
@@ -42,14 +43,10 @@ pub enum TrapType {
 }
 
 #[derive(Debug,PartialEq)]
-pub struct SnmpRequestPdu<'a> {
+pub struct SnmpGenericPdu<'a> {
     pub req_id: u32,
     pub err: u32,
     pub err_index: u32,
-//    pub var: &'a[u8],
-//    pub req_id: DerObject<'a>,
-//    pub err: DerObject<'a>,
-//    pub err_index: DerObject<'a>,
     pub var: DerObject<'a>,
 }
 
@@ -65,7 +62,7 @@ pub struct SnmpTrapPdu<'a> {
 
 #[derive(Debug,PartialEq)]
 pub enum SnmpPdu<'a> {
-    RequestV1(SnmpRequestPdu<'a>),
+    Generic(SnmpGenericPdu<'a>),
     TrapV1(SnmpTrapPdu<'a>),
 }
 
@@ -80,7 +77,7 @@ impl<'a> Iterator for SnmpPduIterator<'a> {
     }
 }
 
-impl<'a> SnmpRequestPdu<'a> {
+impl<'a> SnmpGenericPdu<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
         SnmpPduIterator{ it:self.var.ref_iter() }
     }
@@ -89,7 +86,7 @@ impl<'a> SnmpRequestPdu<'a> {
 impl<'a> SnmpMessage<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
         let obj = match self.parsed_pdu {
-            Some(SnmpPdu::RequestV1(ref pdu)) => &pdu.var,
+            Some(SnmpPdu::Generic(ref pdu)) => &pdu.var,
             Some(SnmpPdu::TrapV1(ref pdu))    => &pdu.var,
             _ => panic!("Attempt to iterator on an empty Pdu"),
         };
@@ -122,8 +119,8 @@ pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'
               err_index:    parse_der_integer >>
               var_bindings: parse_der_sequence >>
               (
-                  SnmpPdu::RequestV1(
-                      SnmpRequestPdu {
+                  SnmpPdu::Generic(
+                      SnmpGenericPdu {
                           req_id:    req_id.content.as_u32().unwrap(),
                           err:       err.content.as_u32().unwrap(),
                           err_index: err_index.content.as_u32().unwrap(),
@@ -233,8 +230,8 @@ fn test_snmp_v1_req() {
         community: b"public",
         pdu_type: PduType::GetRequest,
         raw_pdu: &SNMPV1_REQ[15..],
-        parsed_pdu:Some(SnmpPdu::RequestV1(
-            SnmpRequestPdu{
+        parsed_pdu:Some(SnmpPdu::Generic(
+            SnmpGenericPdu{
                 req_id:38,
                 err:0,
                 err_index:0,
