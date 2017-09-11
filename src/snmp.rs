@@ -8,7 +8,7 @@
 
 use std::str;
 use nom::{IResult,ErrorKind,Err};
-use der_parser::der::*;
+use der_parser::*;
 
 use enum_primitive::FromPrimitive;
 
@@ -214,7 +214,8 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
 mod tests {
     use std::str;
     use snmp::*;
-    use der_parser::der::*;
+    use der_parser::*;
+    use der_parser::oid::Oid;
     use nom::IResult;
     extern crate env_logger;
 
@@ -238,7 +239,7 @@ fn test_snmp_v1_req() {
                 var:DerObject::from_obj(DerObjectContent::Sequence( vec![
                     DerObject::from_obj(
                         DerObjectContent::Sequence(vec![
-                            DerObject::from_obj(DerObjectContent::OID(vec![1, 3, 6, 1, 2, 1, 1, 2, 0])),
+                            DerObject::from_obj(DerObjectContent::OID(Oid::from(&[1, 3, 6, 1, 2, 1, 1, 2, 0]))),
                             DerObject::from_obj(DerObjectContent::Null)
                         ]),
                     ),
