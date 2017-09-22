@@ -111,13 +111,26 @@ impl<'a> SnmpMessage<'a> {
 
 
 
+#[inline]
+fn parse_varbind(i:&[u8]) -> IResult<&[u8],DerObject> {
+    parse_der_sequence_defined!(i,
+                                parse_der_oid,
+                                parse_der
+                               )
+}
+
+#[inline]
+fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],DerObject> {
+    parse_der_sequence_of!(i, parse_varbind)
+}
+
 
 pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
     do_parse!(pdu,
               req_id:       parse_der_integer >>
               err:          parse_der_integer >>
               err_index:    parse_der_integer >>
-              var_bindings: parse_der_sequence >>
+              var_bindings: parse_varbind_list >>
               (
                   SnmpPdu::Generic(
                       SnmpGenericPdu {
