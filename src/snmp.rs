@@ -176,8 +176,8 @@ pub fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>>
               ))
 }
 
-/// Caller is responsible to provide a DerObject of type Sequence, containing
-/// a sequence (Integer,OctetString,Unknown)
+/// Caller is responsible to provide a DerObject of type implicit Sequence, containing
+/// (Integer,OctetString,Unknown)
 pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMessage<'a>> {
     if let DerObjectContent::Sequence(ref v) = obj.content {
         if v.len() != 3 { return IResult::Error(Err::Code(ErrorKind::Custom(128))); };
@@ -195,6 +195,8 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
             Some(p) => p,
             None    => return IResult::Error(Err::Code(ErrorKind::Custom(131))),
         };
+        // v[2] is an implicit sequence: class 2 structured 1
+        // tag is the pdu_type
         let pdu_res = match pdu_type {
             PduType::GetRequest |
             PduType::GetNextRequest |
