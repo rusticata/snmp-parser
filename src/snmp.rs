@@ -99,9 +99,8 @@ impl<'a> SnmpGenericPdu<'a> {
 impl<'a> SnmpMessage<'a> {
     pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
         let obj = match self.parsed_pdu {
-            Some(SnmpPdu::Generic(ref pdu)) => &pdu.var,
-            Some(SnmpPdu::TrapV1(ref pdu))    => &pdu.var,
-            _ => panic!("Attempt to iterator on an empty Pdu"),
+            SnmpPdu::Generic(ref pdu) => &pdu.var,
+            SnmpPdu::TrapV1(ref pdu)  => &pdu.var,
         };
         SnmpPduIterator{ it:obj.ref_iter() }
     }
@@ -112,8 +111,7 @@ pub struct SnmpMessage<'a> {
     pub version: u32,
     pub community: &'a[u8],
     pub pdu_type: PduType,
-    pub raw_pdu: &'a[u8],
-    parsed_pdu: Option<SnmpPdu<'a>>,
+    pub parsed_pdu: SnmpPdu<'a>,
 }
 
 impl<'a> SnmpMessage<'a> {
@@ -212,8 +210,7 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
                                   version: vers,
                                   community: community,
                                   pdu_type: pdu_type,
-                                  raw_pdu: pdu,
-                                  parsed_pdu: Some(r),
+                                  parsed_pdu: r,
                               }
                              )
             },
@@ -256,8 +253,7 @@ fn test_snmp_v1_req() {
         version: 0,
         community: b"public",
         pdu_type: PduType::GetRequest,
-        raw_pdu: &SNMPV1_REQ[15..],
-        parsed_pdu:Some(SnmpPdu::Generic(
+        parsed_pdu:SnmpPdu::Generic(
             SnmpGenericPdu{
                 req_id:38,
                 err:0,
@@ -270,8 +266,7 @@ fn test_snmp_v1_req() {
                         ]),
                     ),
                 ],)),
-            })
-        ),
+            }),
     });
     let res = parse_snmp_v1(&bytes);
     match &res {
