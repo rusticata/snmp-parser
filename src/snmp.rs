@@ -42,6 +42,19 @@ pub enum TrapType {
 }
 }
 
+enum_from_primitive! {
+#[derive(Debug,PartialEq)]
+#[repr(u8)]
+pub enum ErrorStatus {
+    NoError    = 0,
+    TooBig     = 1,
+    NoSuchName = 2,
+    BadValue   = 3,
+    ReadOnly   = 4,
+    GenErr     = 5,
+}
+}
+
 #[derive(Debug,PartialEq)]
 pub struct SnmpGenericPdu<'a> {
     pub req_id: u32,
