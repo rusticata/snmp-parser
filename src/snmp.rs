@@ -237,9 +237,7 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
 
 #[cfg(test)]
 mod tests {
-    use std::str;
     use snmp::*;
-    use der_parser::*;
     use der_parser::oid::Oid;
     use nom::IResult;
     extern crate env_logger;
@@ -290,9 +288,7 @@ static SNMPV1_TRAP_COLDSTART: &'static [u8] = include_bytes!("../assets/snmpv1_t
 #[test]
 fn test_snmp_v1_trap_coldstart() {
     let _ = env_logger::init();
-    let empty = &b""[..];
     let bytes = SNMPV1_TRAP_COLDSTART;
-
     println!("{:?}", parse_snmp_v1(bytes));
 }
 
