@@ -186,6 +186,9 @@ static SNMPV3_REQ: &'static [u8] = include_bytes!("../assets/snmpv3_req.bin");
 fn test_snmp_v3_req() {
     let empty = &b""[..];
     let bytes = SNMPV3_REQ;
+    let sp = [48, 14, 4, 0, 2, 1, 0, 2, 1, 0, 4, 0, 4, 0, 4, 0];
+    let cei = [0x80, 0x00, 0x1f, 0x88, 0x80, 0x59, 0xdc, 0x48, 0x61, 0x45, 0xa2, 0x63, 0x22];
+    let data = [2, 4, 125, 14, 8, 46, 2, 1, 0, 2, 1, 0, 48, 0];
     let expected = IResult::Done(empty,SnmpV3Message{
         version: 3,
         header_data: HeaderData{
@@ -194,12 +197,12 @@ fn test_snmp_v3_req() {
             msg_flags: 4,
             msg_security_model: 3,
         },
-        security_params: &[48, 14, 4, 0, 2, 1, 0, 2, 1, 0, 4, 0, 4, 0, 4, 0],
+        security_params: &sp,
         data: ScopedPduData::Plaintext(
             ScopedPdu{
-                ctx_engine_id: &[0x80, 0x00, 0x1f, 0x88, 0x80, 0x59, 0xdc, 0x48, 0x61, 0x45, 0xa2, 0x63, 0x22],
+                ctx_engine_id: &cei,
                 ctx_engine_name: b"",
-                data: &[2, 4, 125, 14, 8, 46, 2, 1, 0, 2, 1, 0, 48, 0],
+                data: &data,
             }
         ),
     });
