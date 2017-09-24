@@ -182,18 +182,18 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
     if let DerObjectContent::Sequence(ref v) = obj.content {
         if v.len() != 3 { return IResult::Error(Err::Code(ErrorKind::Custom(128))); };
         let vers = match v[0].content.as_u32() {
-            Some (u) => u,
-            None     => return IResult::Error(Err::Code(ErrorKind::Custom(129))),
+            Ok (u) => u,
+            _      => return IResult::Error(Err::Code(ErrorKind::Custom(129))),
         };
         let community = v[1].content.as_slice().unwrap();
         let pdu_type_int = v[2].tag;
         let pdu_type = match PduType::from_u8(pdu_type_int) {
-            None => { return IResult::Error(Err::Code(ErrorKind::Custom(130))); },
             Some(t) => t,
+            None  => { return IResult::Error(Err::Code(ErrorKind::Custom(130))); },
         };
         let pdu = match v[2].content.as_slice() {
-            Some(p) => p,
-            None    => return IResult::Error(Err::Code(ErrorKind::Custom(131))),
+            Ok(p) => p,
+            _     => return IResult::Error(Err::Code(ErrorKind::Custom(131))),
         };
         // v[2] is an implicit sequence: class 2 structured 1
         // tag is the pdu_type
