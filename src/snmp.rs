@@ -138,16 +138,16 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],DerObject> {
 
 pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
     do_parse!(pdu,
-              req_id:       parse_der_integer >>
-              err:          parse_der_integer >>
-              err_index:    parse_der_integer >>
+              req_id:       map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
+              err:          map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
+              err_index:    map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               var_bindings: parse_varbind_list >>
               (
                   SnmpPdu::Generic(
                       SnmpGenericPdu {
-                          req_id:    req_id.content.as_u32().unwrap(),
-                          err:       err.content.as_u32().unwrap(),
-                          err_index: err_index.content.as_u32().unwrap(),
+                          req_id:    req_id,
+                          err:       err,
+                          err_index: err_index,
                           var:       var_bindings
                       }
                   )
