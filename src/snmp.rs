@@ -240,13 +240,11 @@ mod tests {
     use snmp::*;
     use der_parser::oid::Oid;
     use nom::IResult;
-    extern crate env_logger;
 
 static SNMPV1_REQ: &'static [u8] = include_bytes!("../assets/snmpv1_req.bin");
 
 #[test]
 fn test_snmp_v1_req() {
-    let _ = env_logger::init();
     let empty = &b""[..];
     let bytes = SNMPV1_REQ;
     let expected = IResult::Done(empty,SnmpMessage{
@@ -272,10 +270,10 @@ fn test_snmp_v1_req() {
     match &res {
         &IResult::Done(_,ref r) => {
             // debug!("r: {:?}",r);
-            debug!("SNMP: v={}, c={:?}, pdu_type={:?}",r.version,r.get_community(),r.pdu_type);
+            eprintln!("SNMP: v={}, c={:?}, pdu_type={:?}",r.version,r.get_community(),r.pdu_type);
             // debug!("PDU: type={}, {:?}", pdu_type, pdu_res);
             for ref v in r.vars_iter() {
-                debug!("v: {:?}",v);
+                eprintln!("v: {:?}",v);
             }
         },
         _ => (),
@@ -287,7 +285,6 @@ static SNMPV1_TRAP_COLDSTART: &'static [u8] = include_bytes!("../assets/snmpv1_t
 
 #[test]
 fn test_snmp_v1_trap_coldstart() {
-    let _ = env_logger::init();
     let bytes = SNMPV1_TRAP_COLDSTART;
     println!("{:?}", parse_snmp_v1(bytes));
 }
