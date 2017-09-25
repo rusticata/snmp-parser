@@ -12,6 +12,8 @@ use der_parser::*;
 
 use enum_primitive::FromPrimitive;
 
+use error::SnmpError;
+
 enum_from_primitive! {
 #[derive(Debug,PartialEq)]
 #[repr(u8)]
@@ -178,22 +180,22 @@ pub fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>>
 
 /// Caller is responsible to provide a DerObject of type implicit Sequence, containing
 /// (Integer,OctetString,Unknown)
-pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMessage<'a>> {
+pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMessage<'a>,SnmpError> {
     if let DerObjectContent::Sequence(ref v) = obj.content {
-        if v.len() != 3 { return IResult::Error(Err::Code(ErrorKind::Custom(128))); };
+        if v.len() != 3 { return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidMessage))); };
         let vers = match v[0].content.as_u32() {
-            Ok (u) => u,
-            _      => return IResult::Error(Err::Code(ErrorKind::Custom(129))),
+            Ok (u) if u == 1 || u == 2 => u,
+            _  => return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidVersion))),
         };
         let community = v[1].content.as_slice().unwrap();
         let pdu_type_int = v[2].tag;
         let pdu_type = match PduType::from_u8(pdu_type_int) {
             Some(t) => t,
-            None  => { return IResult::Error(Err::Code(ErrorKind::Custom(130))); },
+            None  => { return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidPduType))); },
         };
         let pdu = match v[2].content.as_slice() {
             Ok(p) => p,
-            _     => return IResult::Error(Err::Code(ErrorKind::Custom(131))),
+            _     => return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidPdu))),
         };
         // v[2] is an implicit sequence: class 2 structured 1
         // tag is the pdu_type
@@ -203,7 +205,7 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
             PduType::Response |
             PduType::SetRequest => parse_snmp_v1_request_pdu(pdu),
             PduType::TrapV1     => parse_snmp_v1_trap_pdu(pdu),
-            _                   => { return IResult::Error(Err::Code(ErrorKind::Custom(131))); },
+            _                   => { return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidPdu))); },
         };
         match pdu_res {
             IResult::Done(rem,r) => {
@@ -216,21 +218,22 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
                               }
                              )
             },
-            _ => { return IResult::Error(Err::Code(ErrorKind::Custom(132))); },
+            _ => { return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidPdu))); },
         }
     } else {
-        IResult::Error(Err::Code(ErrorKind::Custom(133)))
+        IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidMessage)))
     }
 }
 
-pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
+pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>,SnmpError> {
     flat_map!(
         i,
-        parse_der_sequence_defined!(
-            parse_der_integer,
-            parse_der_octetstring,
-            parse_der // XXX type is ANY
-        ),
+        fix_error!(SnmpError,
+                   parse_der_sequence_defined!(
+                       parse_der_integer,
+                       parse_der_octetstring,
+                       parse_der // XXX type is ANY
+                       )),
         parse_snmp_v1_content
     )
 }

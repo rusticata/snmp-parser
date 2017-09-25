@@ -11,12 +11,7 @@
 use der_parser::*;
 use nom::{IResult,Err,ErrorKind};
 
-#[derive(Debug)]
-pub enum SnmpV3Error {
-    InvalidMessage,
-    InvalidHeaderData,
-    InvalidScopedPduData,
-}
+use error::SnmpError;
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpV3Message<'a> {
@@ -28,21 +23,21 @@ pub struct SnmpV3Message<'a> {
 }
 
 impl<'a> SnmpV3Message<'a> {
-    pub fn from_der(obj: DerObject<'a>) -> Result<(&[u8],SnmpV3Message),SnmpV3Error> {
+    pub fn from_der(obj: DerObject<'a>) -> Result<(&[u8],SnmpV3Message),SnmpError> {
     if let DerObjectContent::Sequence(ref v) = obj.content {
-        if v.len() != 4 { return Err(SnmpV3Error::InvalidMessage); };
+        if v.len() != 4 { return Err(SnmpError::InvalidMessage); };
         let vers = match v[0].content.as_u32() {
             Ok (u) => u,
-            _      => return Err(SnmpV3Error::InvalidMessage),
+            _      => return Err(SnmpError::InvalidMessage),
         };
         let header_data = HeaderData::from_der(&v[1])?;
         let security_params = match v[2].content.as_slice() {
             Ok(p) => p,
-            _     => return Err(SnmpV3Error::InvalidMessage),
+            _     => return Err(SnmpError::InvalidMessage),
         };
         let pdu = if header_data.is_encrypted()
         {
-            let data = v[3].as_slice().or(Err(SnmpV3Error::InvalidMessage))?;
+            let data = v[3].as_slice().or(Err(SnmpError::InvalidMessage))?;
             ScopedPduData::Encrypted(data)
         } else {
             ScopedPduData::from_der(v[3].clone())? // XXX useless clone to avoid moving data ?
@@ -56,7 +51,7 @@ impl<'a> SnmpV3Message<'a> {
            }
           ))
     } else {
-        Err(SnmpV3Error::InvalidMessage)
+        Err(SnmpError::InvalidMessage)
     }
     }
 }
@@ -70,13 +65,13 @@ pub struct HeaderData {
 }
 
 impl HeaderData {
-    pub fn from_der(obj: &DerObject) -> Result<HeaderData,SnmpV3Error> {
+    pub fn from_der(obj: &DerObject) -> Result<HeaderData,SnmpError> {
         if let DerObjectContent::Sequence(ref v) = obj.content {
-            if v.len() != 4 { return Err(SnmpV3Error::InvalidHeaderData); }
-            let msg_id = v[0].as_u32().or(Err(SnmpV3Error::InvalidHeaderData))?;
-            let msg_max_size = v[1].as_u32().or(Err(SnmpV3Error::InvalidHeaderData))?;
-            let msg_flags = v[2].as_slice().or(Err(SnmpV3Error::InvalidHeaderData))?;
-            let msg_security_model = v[3].as_u32().or(Err(SnmpV3Error::InvalidHeaderData))?;
+            if v.len() != 4 { return Err(SnmpError::InvalidHeaderData); }
+            let msg_id = v[0].as_u32().or(Err(SnmpError::InvalidHeaderData))?;
+            let msg_max_size = v[1].as_u32().or(Err(SnmpError::InvalidHeaderData))?;
+            let msg_flags = v[2].as_slice().or(Err(SnmpError::InvalidHeaderData))?;
+            let msg_security_model = v[3].as_u32().or(Err(SnmpError::InvalidHeaderData))?;
             Ok(HeaderData{
                 msg_id: msg_id,
                 msg_max_size: msg_max_size,
@@ -84,7 +79,7 @@ impl HeaderData {
                 msg_security_model: msg_security_model,
             })
         } else {
-            Err(SnmpV3Error::InvalidMessage)
+            Err(SnmpError::InvalidMessage)
         }
     }
 
@@ -110,19 +105,19 @@ pub struct ScopedPdu<'a> {
 }
 
 impl<'a> ScopedPduData<'a> {
-    pub fn from_der(obj: DerObject) -> Result<ScopedPduData,SnmpV3Error> {
+    pub fn from_der(obj: DerObject) -> Result<ScopedPduData,SnmpError> {
         if let DerObjectContent::Sequence(ref v) = obj.content {
-            if v.len() != 3 { return Err(SnmpV3Error::InvalidScopedPduData); }
-            let ctx_engine_id = v[0].as_slice().or(Err(SnmpV3Error::InvalidScopedPduData))?;
-            let ctx_engine_name = v[1].as_slice().or(Err(SnmpV3Error::InvalidScopedPduData))?;
-            let data = v[2].as_slice().or(Err(SnmpV3Error::InvalidScopedPduData))?;
+            if v.len() != 3 { return Err(SnmpError::InvalidScopedPduData); }
+            let ctx_engine_id = v[0].as_slice().or(Err(SnmpError::InvalidScopedPduData))?;
+            let ctx_engine_name = v[1].as_slice().or(Err(SnmpError::InvalidScopedPduData))?;
+            let data = v[2].as_slice().or(Err(SnmpError::InvalidScopedPduData))?;
             Ok(ScopedPduData::Plaintext(ScopedPdu{
                 ctx_engine_id: ctx_engine_id,
                 ctx_engine_name: ctx_engine_name,
                 data: data,
             }))
         } else {
-            Err(SnmpV3Error::InvalidMessage)
+            Err(SnmpError::InvalidMessage)
         }
     }
 }
@@ -130,22 +125,24 @@ impl<'a> ScopedPduData<'a> {
 
 
 
-pub fn parse_snmp_v3_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpV3Message<'a>> {
+pub fn parse_snmp_v3_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpError> {
     match SnmpV3Message::from_der(obj) {
         Ok((rem,m))  => IResult::Done(rem,m),
-        Err(_)       => IResult::Error(error_code!(ErrorKind::Custom(127))),
+        Err(e)       => IResult::Error(error_code!(ErrorKind::Custom(e))),
     }
 }
 
-pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>> {
+pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpError> {
     flat_map!(
         i,
-        parse_der_sequence_defined!(
-            parse_der_integer,
-            parse_snmp_v3_headerdata,
-            parse_der_octetstring,
-            parse_der // type is ANY
-        ),
+        fix_error!(SnmpError,
+                   parse_der_sequence_defined!(
+                       parse_der_integer,
+                       parse_snmp_v3_headerdata,
+                       parse_der_octetstring,
+                       parse_der // type is ANY
+                       )
+                   ),
         parse_snmp_v3_content
     )
 }
