@@ -1,7 +1,12 @@
 [package]
 name = "snmp-parser"
 version = "0.1.0"
+description = "Parser for the TLS protocol"
+license = "MIT/Apache-2.0"
+keywords = ["SNMP","protocol","parser","nom"]
 authors = ["Pierre Chifflier <chifflier@wzdftpd.net>"]
+homepage = "https://github.com/rusticata/snmp-parser"
+repository = "https://github.com/rusticata/snmp-parser.git"
 
 [dependencies]
 nom = {version = "^3.0", features = ["verbose-errors"]}
