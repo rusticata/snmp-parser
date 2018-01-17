@@ -9,7 +9,7 @@
 //!   - [RFC2578](https://tools.ietf.org/html/rfc2578): Structure of Management Information Version 2 (SMIv2)
 
 use der_parser::*;
-use nom::{IResult,Err,ErrorKind};
+use nom::{IResult,ErrorKind};
 
 use error::SnmpError;
 

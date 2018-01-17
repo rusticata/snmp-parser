@@ -143,6 +143,7 @@ pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'
               req_id:       map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               err:          map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               err_index:    map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
+              error_if!(true == false, ErrorKind::Custom(128)) >>
               var_bindings: parse_varbind_list >>
               (
                   SnmpPdu::Generic(
