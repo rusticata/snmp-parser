@@ -184,7 +184,7 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
     if let DerObjectContent::Sequence(ref v) = obj.content {
         if v.len() != 3 { return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidMessage))); };
         let vers = match v[0].content.as_u32() {
-            Ok (u) if u == 1 || u == 2 => u,
+            Ok (u) if u <= 2 => u,
             _  => return IResult::Error(Err::Code(ErrorKind::Custom(SnmpError::InvalidVersion))),
         };
         let community = v[1].content.as_slice().unwrap();
