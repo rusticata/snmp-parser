@@ -210,7 +210,7 @@ fn test_snmp_v3_req() {
 
 
 #[test]
-fn test_snmp_v1_trap_coldstart() {
+fn test_snmp_v3_req_encrypted() {
     let bytes = include_bytes!("../assets/snmpv3_req_encrypted.bin");
     let res = parse_snmp_v3(bytes);
     eprintln!("{:?}", res);

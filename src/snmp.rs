@@ -6,9 +6,11 @@
 //!   - [RFC3416](https://tools.ietf.org/html/rfc3416): SNMP v2
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
 
-use std::str;
+use std::{fmt,str};
+use std::net::Ipv4Addr;
 use nom::{IResult,ErrorKind};
 use der_parser::*;
+use der_parser::oid::Oid;
 
 use enum_primitive::FromPrimitive;
 
@@ -30,19 +32,47 @@ pub enum PduType {
 }
 }
 
-enum_from_primitive! {
-#[derive(Debug,PartialEq)]
-#[repr(u8)]
-pub enum TrapType {
-    ColdStart = 0,
-    WarmStart = 1,
-    LinkDown = 2,
-    LinkUp = 3,
-    AuthenticationFailure = 4,
-    EgpNeighborLoss = 5,
-    EnterpriseSpecific = 6,
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct TrapType(pub u8);
+
+impl TrapType {
+    pub const COLD_START             : TrapType = TrapType(0);
+    pub const WARM_START             : TrapType = TrapType(1);
+    pub const LINK_DOWN              : TrapType = TrapType(2);
+    pub const LINK_UP                : TrapType = TrapType(3);
+    pub const AUTHENTICATION_FAILURE : TrapType = TrapType(4);
+    pub const EGP_NEIGHBOR_LOSS      : TrapType = TrapType(5);
+    pub const ENTERPRISE_SPECIFIC    : TrapType = TrapType(6);
 }
+
+impl fmt::Debug for TrapType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+           0 => f.write_str("coldStart"),
+           1 => f.write_str("warmStart"),
+           2 => f.write_str("linkDown"),
+           3 => f.write_str("linkUp"),
+           4 => f.write_str("authenticationFailure"),
+           5 => f.write_str("egpNeighborLoss"),
+           6 => f.write_str("enterpriseSpecific"),
+           n => f.debug_tuple("TrapType").field(&n).finish(),
+        }
+    }
 }
+
+/// This CHOICE represents an address from one of possibly several
+/// protocol families.  Currently, only one protocol family, the Internet
+/// family, is present in this CHOICE.
+#[derive(Debug, PartialEq)]
+pub enum NetworkAddress {
+    IPv4(Ipv4Addr),
+}
+
+/// This application-wide type represents a non-negative integer which
+/// counts the time in hundredths of a second since some epoch.  When
+/// object types are defined in the MIB which use this ASN.1 type, the
+/// description of the object type identifies the reference epoch.
+pub type TimeTicks = u32;
 
 enum_from_primitive! {
 #[derive(Debug,PartialEq)]
@@ -67,11 +97,11 @@ pub struct SnmpGenericPdu<'a> {
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpTrapPdu<'a> {
-    enterprise: DerObject<'a>,
-    agent_addr: DerObject<'a>,  // NetworkAddress
-    generic_trap: DerObject<'a>, // Integer
-    specific_trap: DerObject<'a>, // Integer,
-    timestamp: DerObject<'a>, // TimeTicks
+    pub enterprise: Oid,
+    pub agent_addr: NetworkAddress,
+    pub generic_trap: TrapType,
+    pub specific_trap: u32,
+    pub timestamp: TimeTicks,
     pub var: DerObject<'a>,
 }
 
@@ -137,13 +167,60 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],DerObject> {
     parse_der_sequence_of!(i, parse_varbind)
 }
 
+/// <pre>
+///  NetworkAddress ::=
+///      CHOICE {
+///          internet
+///              IpAddress
+///      }
+/// IpAddress ::=
+///     [APPLICATION 0]          -- in network-byte order
+///         IMPLICIT OCTET STRING (SIZE (4))
+/// </pre>
+fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
+    match parse_der(i) {
+        IResult::Done(rem,obj) => {
+            if obj.tag != 0 || obj.class != 0b01 {
+                return IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR)));
+            }
+            match obj.content {
+                DerObjectContent::Unknown(s) if s.len() == 4 => {
+                    IResult::Done(rem, NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3])))
+                },
+                _ => IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR))),
+            }
+        },
+        IResult::Incomplete(i) => IResult::Incomplete(i),
+        IResult::Error(e)      => IResult::Error(e),
+    }
+}
+
+/// <pre>
+/// TimeTicks ::=
+///     [APPLICATION 3]
+///         IMPLICIT INTEGER (0..4294967295)
+/// </pre>
+fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
+    fn der_read_integer_content(i:&[u8], _tag:u8, len: usize) -> IResult<&[u8],DerObjectContent,u32> {
+        der_read_element_content_as(i, DerTag::Integer as u8, len)
+    }
+    map_res!(i, apply!(parse_der_implicit, 3, der_read_integer_content), |x: DerObject| {
+        match x.as_context_specific() {
+            Ok((_,Some(x))) => x.as_u32(),
+            _               => Err(DerError::DerTypeError),
+        }
+    })
+}
+
+
+
 
 pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
     do_parse!(pdu,
               req_id:       map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               err:          map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               err_index:    map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
-              error_if!(true == false, ErrorKind::Custom(128)) >>
+                            error_if!(true == false, ErrorKind::Custom(128)) >>
               var_bindings: parse_varbind_list >>
               (
                   SnmpPdu::Generic(
@@ -158,25 +235,27 @@ pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'
 }
 
 pub fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
-    do_parse!(pdu,
-              enterprise:    parse_der_oid >>
-              agent_addr:    parse_der >> // XXX NetworkAddress
-              generic_trap:  parse_der_integer >>
-              specific_trap: parse_der_integer >>
-              timestamp:     parse_der >> // XXX TimeTicks
-              var_bindings:  parse_der_sequence >>
-              (
-                  SnmpPdu::TrapV1(
-                      SnmpTrapPdu {
-                          enterprise:    enterprise,
-                          agent_addr:    agent_addr,
-                          generic_trap:  generic_trap,
-                          specific_trap: specific_trap,
-                          timestamp:     timestamp,
-                          var:           var_bindings
-                      }
-                  )
-              ))
+    do_parse!(
+        pdu,
+        enterprise:    map_res!(parse_der_oid, |x: DerObject| x.as_oid_val()) >>
+        agent_addr:    parse_networkaddress >>
+        generic_trap:  map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
+        specific_trap: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
+        timestamp:     parse_timeticks >>
+        var_bindings:  parse_der_sequence >>
+        (
+            SnmpPdu::TrapV1(
+                SnmpTrapPdu {
+                    enterprise:    enterprise,
+                    agent_addr:    agent_addr,
+                    generic_trap:  TrapType(generic_trap as u8),
+                    specific_trap: specific_trap,
+                    timestamp:     timestamp,
+                    var:           var_bindings
+                }
+            )
+        )
+    )
 }
 
 /// Caller is responsible to provide a DerObject of type implicit Sequence, containing
@@ -283,14 +362,6 @@ fn test_snmp_v1_req() {
         _ => (),
     };
     assert_eq!(res, expected);
-}
-
-static SNMPV1_TRAP_COLDSTART: &'static [u8] = include_bytes!("../assets/snmpv1_trap_coldstart.bin");
-
-#[test]
-fn test_snmp_v1_trap_coldstart() {
-    let bytes = SNMPV1_TRAP_COLDSTART;
-    println!("{:?}", parse_snmp_v1(bytes));
 }
 
 }
