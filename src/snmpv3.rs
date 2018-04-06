@@ -9,7 +9,7 @@
 //!   - [RFC2578](https://tools.ietf.org/html/rfc2578): Structure of Management Information Version 2 (SMIv2)
 
 use der_parser::*;
-use nom::{IResult,ErrorKind};
+use nom::IResult;
 
 use error::SnmpError;
 
@@ -22,40 +22,6 @@ pub struct SnmpV3Message<'a> {
     // pub data: DerObject<'a>,
 }
 
-impl<'a> SnmpV3Message<'a> {
-    pub fn from_der(obj: DerObject<'a>) -> Result<(&[u8],SnmpV3Message),SnmpError> {
-    if let DerObjectContent::Sequence(ref v) = obj.content {
-        if v.len() != 4 { return Err(SnmpError::InvalidMessage); };
-        let vers = match v[0].content.as_u32() {
-            Ok (u) => u,
-            _      => return Err(SnmpError::InvalidMessage),
-        };
-        let header_data = HeaderData::from_der(&v[1])?;
-        let security_params = match v[2].content.as_slice() {
-            Ok(p) => p,
-            _     => return Err(SnmpError::InvalidMessage),
-        };
-        let pdu = if header_data.is_encrypted()
-        {
-            let data = v[3].as_slice().or(Err(SnmpError::InvalidMessage))?;
-            ScopedPduData::Encrypted(data)
-        } else {
-            ScopedPduData::from_der(v[3].clone())? // XXX useless clone to avoid moving data ?
-        };
-        Ok((&b""[..],
-           SnmpV3Message{
-               version: vers,
-               header_data: header_data,
-               security_params: security_params,
-               data: pdu,
-           }
-          ))
-    } else {
-        Err(SnmpError::InvalidMessage)
-    }
-    }
-}
-
 #[derive(Debug,PartialEq)]
 pub struct HeaderData {
     pub msg_id: u32,
@@ -65,24 +31,6 @@ pub struct HeaderData {
 }
 
 impl HeaderData {
-    pub fn from_der(obj: &DerObject) -> Result<HeaderData,SnmpError> {
-        if let DerObjectContent::Sequence(ref v) = obj.content {
-            if v.len() != 4 { return Err(SnmpError::InvalidHeaderData); }
-            let msg_id = v[0].as_u32().or(Err(SnmpError::InvalidHeaderData))?;
-            let msg_max_size = v[1].as_u32().or(Err(SnmpError::InvalidHeaderData))?;
-            let msg_flags = v[2].as_slice().or(Err(SnmpError::InvalidHeaderData))?;
-            let msg_security_model = v[3].as_u32().or(Err(SnmpError::InvalidHeaderData))?;
-            Ok(HeaderData{
-                msg_id: msg_id,
-                msg_max_size: msg_max_size,
-                msg_flags: msg_flags[0] as u8,
-                msg_security_model: msg_security_model,
-            })
-        } else {
-            Err(SnmpError::InvalidMessage)
-        }
-    }
-
     pub fn is_authenticated(&self) -> bool { self.msg_flags & 0b001 != 0 }
 
     pub fn is_encrypted(&self) -> bool { self.msg_flags & 0b010 != 0 }
@@ -104,70 +52,77 @@ pub struct ScopedPdu<'a> {
     pub data: &'a[u8],
 }
 
-impl<'a> ScopedPduData<'a> {
-    pub fn from_der(obj: DerObject) -> Result<ScopedPduData,SnmpError> {
-        if let DerObjectContent::Sequence(ref v) = obj.content {
-            if v.len() != 3 { return Err(SnmpError::InvalidScopedPduData); }
-            let ctx_engine_id = v[0].as_slice().or(Err(SnmpError::InvalidScopedPduData))?;
-            let ctx_engine_name = v[1].as_slice().or(Err(SnmpError::InvalidScopedPduData))?;
-            let data = v[2].as_slice().or(Err(SnmpError::InvalidScopedPduData))?;
-            Ok(ScopedPduData::Plaintext(ScopedPdu{
-                ctx_engine_id: ctx_engine_id,
-                ctx_engine_name: ctx_engine_name,
-                data: data,
-            }))
-        } else {
-            Err(SnmpError::InvalidMessage)
-        }
-    }
-}
 
 
 
-
-pub fn parse_snmp_v3_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpError> {
-    match SnmpV3Message::from_der(obj) {
-        Ok((rem,m))  => IResult::Done(rem,m),
-        Err(e)       => IResult::Error(error_code!(ErrorKind::Custom(e))),
+fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a[u8],ScopedPduData<'a>> {
+    if hdr.is_encrypted()
+    {
+        map_res!(i,
+                 parse_der_octetstring,
+                 |x: DerObject<'a>| x.as_slice().map(|x| ScopedPduData::Encrypted(x))
+        )
+    } else {
+        parse_snmp_v3_plaintext_pdu(i)
     }
 }
 
 pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpError> {
-    flat_map!(
+    fix_error!(
         i,
-        fix_error!(SnmpError,
-                   parse_der_sequence_defined!(
-                       parse_der_integer,
-                       parse_snmp_v3_headerdata,
-                       parse_der_octetstring,
-                       parse_der // type is ANY
-                       )
-                   ),
-        parse_snmp_v3_content
-    )
+        SnmpError,
+        parse_der_struct!(
+            TAG DerTag::Sequence,
+            vers: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
+            hdr:  parse_snmp_v3_headerdata >>
+            secp: map_res!(parse_der_octetstring, |x: DerObject<'a>| x.as_slice()) >>
+            data: apply!(parse_snmp_v3_data,&hdr) >>
+            ({
+                SnmpV3Message{
+                    version: vers,
+                    header_data: hdr,
+                    security_params: secp,
+                    data: data
+                }
+            })
+        )
+    ).map(|x| x.1)
 }
 
-fn parse_snmp_v3_headerdata<'a>(i:&'a[u8]) -> IResult<&'a[u8],DerObject<'a>> {
-    parse_der_sequence_defined!(
+fn parse_snmp_v3_headerdata<'a>(i:&'a[u8]) -> IResult<&'a[u8],HeaderData> {
+    parse_der_struct!(
         i,
-        parse_der_integer,
-        parse_der_integer,
-        parse_der_octetstring,
-        parse_der_integer
-    )
+        TAG DerTag::Sequence,
+        id: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
+        sz: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
+        fl: map_res!(parse_der_octetstring, |x: DerObject| x.as_slice().and_then(|s|
+            if s.len() == 1 { Ok(s[0]) } else { Err(DerError::DerValueError) })) >>
+        sm: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
+        (
+            HeaderData{
+                msg_id: id,
+                msg_max_size: sz,
+                msg_flags: fl,
+                msg_security_model: sm,
+            }
+        )
+    ).map(|x| x.1)
 }
 
 fn parse_snmp_v3_plaintext_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],ScopedPduData<'a>> {
-    map_res!(i,parse_snmp_v3_scoped_pdu,ScopedPduData::from_der)
-}
-
-fn parse_snmp_v3_scoped_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],DerObject<'a>> {
-    parse_der_sequence_defined!(
+    parse_der_struct!(
         i,
-        parse_der_octetstring,
-        parse_der_octetstring,
-        parse_der
-    )
+        ctx_eng_id: map_res!(parse_der_octetstring, |x: DerObject<'a>| x.as_slice()) >>
+        ctx_name:   map_res!(parse_der_octetstring, |x: DerObject<'a>| x.as_slice()) >>
+        data:       map_res!(parse_der, |x: DerObject<'a>| x.as_slice()) >>
+        (
+            ScopedPduData::Plaintext(ScopedPdu{
+                ctx_engine_id: ctx_eng_id,
+                ctx_engine_name: ctx_name,
+                data: data
+            })
+        )
+    ).map(|x| x.1)
 }
 
 
