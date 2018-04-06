@@ -89,23 +89,37 @@ pub enum NetworkAddress {
 /// description of the object type identifies the reference epoch.
 pub type TimeTicks = u32;
 
-enum_from_primitive! {
-#[derive(Debug,PartialEq)]
-#[repr(u8)]
-pub enum ErrorStatus {
-    NoError    = 0,
-    TooBig     = 1,
-    NoSuchName = 2,
-    BadValue   = 3,
-    ReadOnly   = 4,
-    GenErr     = 5,
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct ErrorStatus(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl ErrorStatus {
+    pub const NoError    : ErrorStatus = ErrorStatus(0);
+    pub const TooBig     : ErrorStatus = ErrorStatus(1);
+    pub const NoSuchName : ErrorStatus = ErrorStatus(2);
+    pub const BadValue   : ErrorStatus = ErrorStatus(3);
+    pub const ReadOnly   : ErrorStatus = ErrorStatus(4);
+    pub const GenErr     : ErrorStatus = ErrorStatus(5);
 }
+
+impl fmt::Debug for ErrorStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+           0 => f.write_str("NoError"),
+           1 => f.write_str("TooBig"),
+           2 => f.write_str("NoSuchName"),
+           3 => f.write_str("BadValue"),
+           4 => f.write_str("ReadOnly"),
+           5 => f.write_str("GenErr"),
+           n => f.debug_tuple("ErrorStatus").field(&n).finish(),
+        }
+    }
 }
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpGenericPdu<'a> {
     pub req_id: u32,
-    pub err: u32,
+    pub err: ErrorStatus,
     pub err_index: u32,
     pub var: DerObject<'a>,
 }
@@ -241,7 +255,7 @@ pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'
                   SnmpPdu::Generic(
                       SnmpGenericPdu {
                           req_id:    req_id,
-                          err:       err,
+                          err:       ErrorStatus(err),
                           err_index: err_index,
                           var:       var_bindings
                       }
@@ -348,7 +362,7 @@ fn test_snmp_v1_req() {
         parsed_pdu:SnmpPdu::Generic(
             SnmpGenericPdu{
                 req_id:38,
-                err:0,
+                err:ErrorStatus(0),
                 err_index:0,
                 var:DerObject::from_obj(DerObjectContent::Sequence( vec![
                     DerObject::from_obj(

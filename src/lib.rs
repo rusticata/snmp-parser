@@ -1,7 +1,4 @@
 #[macro_use]
-extern crate enum_primitive;
-
-#[macro_use]
 extern crate nom;
 
 #[macro_use]
