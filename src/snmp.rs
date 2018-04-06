@@ -12,24 +12,39 @@ use nom::{IResult,ErrorKind};
 use der_parser::*;
 use der_parser::oid::Oid;
 
-use enum_primitive::FromPrimitive;
-
 use error::SnmpError;
 
-enum_from_primitive! {
-#[derive(Debug,PartialEq)]
-#[repr(u8)]
-pub enum PduType {
-    GetRequest = 0,
-    GetNextRequest = 1,
-    Response = 2,
-    SetRequest = 3,
-    TrapV1 = 4, // Obsolete, was the old Trap-PDU in SNMPv1
-    GetBulkRequest = 5,
-    InformRequest = 6,
-    TrapV2 = 7,
-    Report = 8,
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct PduType(pub u8);
+
+#[allow(non_upper_case_globals)]
+impl PduType {
+    pub const GetRequest     : PduType = PduType(0);
+    pub const GetNextRequest : PduType = PduType(1);
+    pub const Response       : PduType = PduType(2);
+    pub const SetRequest     : PduType = PduType(3);
+    pub const TrapV1         : PduType = PduType(4); // Obsolete, was the old Trap-PDU in SNMPv1
+    pub const GetBulkRequest : PduType = PduType(5);
+    pub const InformRequest  : PduType = PduType(6);
+    pub const TrapV2         : PduType = PduType(7);
+    pub const Report         : PduType = PduType(8);
 }
+
+impl fmt::Debug for PduType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+           0 => f.write_str("GetRequest"),
+           1 => f.write_str("GetNextRequest"),
+           2 => f.write_str("Response"),
+           3 => f.write_str("SetRequest"),
+           4 => f.write_str("TrapV1"),
+           5 => f.write_str("GetBulkRequest"),
+           6 => f.write_str("InformRequest"),
+           7 => f.write_str("TrapV2"),
+           8 => f.write_str("Report"),
+           n => f.debug_tuple("PduType").field(&n).finish(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -268,11 +283,7 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
             _  => return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidVersion))),
         };
         let community = v[1].content.as_slice().unwrap();
-        let pdu_type_int = v[2].tag;
-        let pdu_type = match PduType::from_u8(pdu_type_int) {
-            Some(t) => t,
-            None  => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPduType))); },
-        };
+        let pdu_type = PduType(v[2].tag);
         let pdu = match v[2].content.as_slice() {
             Ok(p) => p,
             _     => return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))),
