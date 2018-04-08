@@ -4,7 +4,6 @@ extern crate nom;
 
 use nom::IResult;
 use snmp_parser::*;
-use der_parser::DerObject;
 
 static SNMPV3_REQ: &'static [u8] = include_bytes!("../assets/snmpv3_req.bin");
 
@@ -19,7 +18,7 @@ fn test_snmp_v3_req() {
         req_id: 2098071598,
         err: ErrorStatus::NoError,
         err_index: 0,
-        var: DerObject::from_seq(vec![])
+        var: vec![]
     });
     let expected = IResult::Done(empty,SnmpV3Message{
         version: 3,

@@ -8,6 +8,7 @@
 
 use std::{fmt,str};
 use std::net::Ipv4Addr;
+use std::slice::Iter;
 use nom::{IResult,ErrorKind};
 use der_parser::*;
 use der_parser::oid::Oid;
@@ -122,7 +123,7 @@ pub struct SnmpGenericPdu<'a> {
     pub req_id: u32,
     pub err: ErrorStatus,
     pub err_index: u32,
-    pub var: DerObject<'a>,
+    pub var: Vec<SnmpVariable<'a>>,
 }
 
 #[derive(Debug,PartialEq)]
@@ -132,7 +133,7 @@ pub struct SnmpTrapPdu<'a> {
     pub generic_trap: TrapType,
     pub specific_trap: u32,
     pub timestamp: TimeTicks,
-    pub var: DerObject<'a>,
+    pub var: Vec<SnmpVariable<'a>>,
 }
 
 #[derive(Debug,PartialEq)]
@@ -141,30 +142,24 @@ pub enum SnmpPdu<'a> {
     TrapV1(SnmpTrapPdu<'a>),
 }
 
-pub struct SnmpPduIterator<'a> {
-    it: DerObjectRefIterator<'a>,
-}
-
-impl<'a> Iterator for SnmpPduIterator<'a> {
-    type Item = &'a DerObject<'a>;
-    fn next(&mut self) -> Option<&'a DerObject<'a>> {
-        self.it.next()
+impl<'a> SnmpGenericPdu<'a> {
+    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+        self.var.iter()
     }
 }
 
-impl<'a> SnmpGenericPdu<'a> {
-    pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
-        SnmpPduIterator{ it:self.var.ref_iter() }
+impl<'a> SnmpTrapPdu<'a> {
+    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+        self.var.iter()
     }
 }
 
 impl<'a> SnmpMessage<'a> {
-    pub fn vars_iter(&'a self) -> SnmpPduIterator<'a> {
-        let obj = match self.parsed_pdu {
-            SnmpPdu::Generic(ref pdu) => &pdu.var,
-            SnmpPdu::TrapV1(ref pdu)  => &pdu.var,
-        };
-        SnmpPduIterator{ it:obj.ref_iter() }
+    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+        match self.parsed_pdu {
+            SnmpPdu::Generic(ref pdu) => pdu.var.iter(),
+            SnmpPdu::TrapV1(ref pdu)  => pdu.var.iter(),
+        }
     }
 }
 
@@ -182,19 +177,37 @@ impl<'a> SnmpMessage<'a> {
     }
 }
 
+#[derive(Debug,PartialEq)]
+pub struct SnmpVariable<'a> {
+    pub oid: Oid,
+    pub val: DerObject<'a> // XXX should be ObjectSyntax (RFC 1155)
+}
+
 
 
 #[inline]
-fn parse_varbind(i:&[u8]) -> IResult<&[u8],DerObject> {
-    parse_der_sequence_defined!(i,
-                                parse_der_oid,
-                                parse_der
-                               )
+fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
+    parse_der_struct!(
+        i,
+        TAG DerTag::Sequence,
+        oid: map_res!(parse_der_oid, |x:DerObject| x.as_oid_val()) >>
+        val: parse_der >>
+             // eof!() >>
+        (
+            SnmpVariable{ oid:oid, val:val }
+        )
+    ).map(|x| x.1)
 }
 
 #[inline]
-fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],DerObject> {
-    parse_der_sequence_of!(i, parse_varbind)
+fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
+    parse_der_struct!(
+        i,
+        TAG DerTag::Sequence,
+        l: many0!(parse_varbind) >>
+           // eof!() >>
+        ( l )
+    ).map(|x| x.1)
 }
 
 /// <pre>
@@ -273,7 +286,7 @@ fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
         generic_trap:  map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
         specific_trap: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
         timestamp:     parse_timeticks >>
-        var_bindings:  parse_der_sequence >>
+        var_bindings:  parse_varbind_list >>
         (
             SnmpPdu::TrapV1(
                 SnmpTrapPdu {

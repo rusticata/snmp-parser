@@ -24,14 +24,12 @@ fn test_snmp_v1_req() {
                 req_id:38,
                 err:ErrorStatus(0),
                 err_index:0,
-                var:DerObject::from_obj(DerObjectContent::Sequence( vec![
-                    DerObject::from_obj(
-                        DerObjectContent::Sequence(vec![
-                            DerObject::from_obj(DerObjectContent::OID(Oid::from(&[1, 3, 6, 1, 2, 1, 1, 2, 0]))),
-                            DerObject::from_obj(DerObjectContent::Null)
-                        ]),
-                    ),
-                ],)),
+                var:vec![
+                    SnmpVariable{
+                        oid: Oid::from(&[1, 3, 6, 1, 2, 1, 1, 2, 0]),
+                        val: DerObject::from_obj(DerObjectContent::Null)
+                    }
+                ],
             }),
     });
     let res = parse_snmp_v1(&bytes);
