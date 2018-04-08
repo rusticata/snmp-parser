@@ -11,6 +11,8 @@
 use der_parser::*;
 use nom::IResult;
 
+use snmp::{SnmpPdu,parse_snmp_v1_pdu};
+
 use error::SnmpError;
 
 #[derive(Debug,PartialEq)]
@@ -49,7 +51,7 @@ pub struct ScopedPdu<'a> {
     pub ctx_engine_id: &'a[u8],
     pub ctx_engine_name: &'a[u8],
     /// ANY -- e.g., PDUs as defined in [RFC3416](https://tools.ietf.org/html/rfc3416)
-    pub data: &'a[u8],
+    pub data: SnmpPdu<'a>,
 }
 
 
@@ -114,7 +116,7 @@ fn parse_snmp_v3_plaintext_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],ScopedPduData<'
         i,
         ctx_eng_id: map_res!(parse_der_octetstring, |x: DerObject<'a>| x.as_slice()) >>
         ctx_name:   map_res!(parse_der_octetstring, |x: DerObject<'a>| x.as_slice()) >>
-        data:       map_res!(parse_der, |x: DerObject<'a>| x.as_slice()) >>
+        data:       parse_snmp_v1_pdu >>
         (
             ScopedPduData::Plaintext(ScopedPdu{
                 ctx_engine_id: ctx_eng_id,

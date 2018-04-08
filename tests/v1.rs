@@ -20,6 +20,7 @@ fn test_snmp_v1_req() {
         pdu_type: PduType::GetRequest,
         parsed_pdu:SnmpPdu::Generic(
             SnmpGenericPdu{
+                pdu_type: PduType::GetRequest,
                 req_id:38,
                 err:ErrorStatus(0),
                 err_index:0,

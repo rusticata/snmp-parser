@@ -118,6 +118,7 @@ impl fmt::Debug for ErrorStatus {
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpGenericPdu<'a> {
+    pub pdu_type: PduType,
     pub req_id: u32,
     pub err: ErrorStatus,
     pub err_index: u32,
@@ -244,7 +245,7 @@ fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
 
 
 
-pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+fn parse_snmp_v1_generic_pdu<'a>(pdu: &'a [u8], tag:PduType) -> IResult<&'a[u8],SnmpPdu<'a>> {
     do_parse!(pdu,
               req_id:       map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               err:          map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
@@ -254,6 +255,7 @@ pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'
               (
                   SnmpPdu::Generic(
                       SnmpGenericPdu {
+                          pdu_type:  tag,
                           req_id:    req_id,
                           err:       ErrorStatus(err),
                           err_index: err_index,
@@ -263,7 +265,7 @@ pub fn parse_snmp_v1_request_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'
               ))
 }
 
-pub fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
     do_parse!(
         pdu,
         enterprise:    map_res!(parse_der_oid, |x: DerObject| x.as_oid_val()) >>
@@ -308,7 +310,8 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
             PduType::GetRequest |
             PduType::GetNextRequest |
             PduType::Response |
-            PduType::SetRequest => parse_snmp_v1_request_pdu(pdu),
+            PduType::SetRequest |
+            PduType::Report     => parse_snmp_v1_generic_pdu(pdu, pdu_type),
             PduType::TrapV1     => parse_snmp_v1_trap_pdu(pdu),
             _                   => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
         };
@@ -330,6 +333,23 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
     }
 }
 
+/// Top-level message
+///
+/// <pre>
+/// Message ::=
+///         SEQUENCE {
+///             version          -- version-1 for this RFC
+///                 INTEGER {
+///                     version-1(0)
+///                 },
+///
+///             community        -- community name
+///                 OCTET STRING,
+///
+///             data             -- e.g., PDUs if trivial
+///                 ANY          -- authentication is being used
+///         }
+/// </pre>
 pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>,SnmpError> {
     flat_map!(
         i,
@@ -341,4 +361,24 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>,SnmpError
                        )),
         parse_snmp_v1_content
     )
+}
+
+pub fn parse_snmp_v1_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+    match der_read_element_header(i) {
+        IResult::Done(rem,hdr) => {
+            match PduType(hdr.tag) {
+                PduType::GetRequest |
+                PduType::GetNextRequest |
+                PduType::Response |
+                PduType::SetRequest |
+                PduType::Report     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
+                PduType::TrapV1     => parse_snmp_v1_trap_pdu(rem),
+                _                   => { return IResult::Error(error_code!(ErrorKind::Custom(128))); },
+                // _                   => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
+            }
+        },
+        IResult::Incomplete(i) => IResult::Incomplete(i),
+        IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
+        // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),
+    }
 }
