@@ -85,6 +85,19 @@ pub enum NetworkAddress {
 }
 
 /// This application-wide type represents a non-negative integer which
+/// monotonically increases until it reaches a maximum value, when it
+/// wraps around and starts increasing again from zero.  This memo
+/// specifies a maximum value of 2^32-1 (4294967295 decimal) for
+/// counters.
+pub type Counter = u32;
+
+/// This application-wide type represents a non-negative integer, which
+/// may increase or decrease, but which latches at a maximum value.  This
+/// memo specifies a maximum value of 2^32-1 (4294967295 decimal) for
+/// gauges.
+pub type Gauge = u32;
+
+/// This application-wide type represents a non-negative integer which
 /// counts the time in hundredths of a second since some epoch.  When
 /// object types are defined in the MIB which use this ASN.1 type, the
 /// description of the object type identifies the reference epoch.
@@ -180,10 +193,83 @@ impl<'a> SnmpMessage<'a> {
 #[derive(Debug,PartialEq)]
 pub struct SnmpVariable<'a> {
     pub oid: Oid,
-    pub val: DerObject<'a> // XXX should be ObjectSyntax (RFC 1155)
+    pub val: ObjectSyntax<'a>
 }
 
+#[derive(Debug,PartialEq)]
+pub enum ObjectSyntax<'a> {
+    Number(DerObject<'a>),
+    String(&'a[u8]),
+    Object(Oid),
+    Empty,
+    Address(NetworkAddress),
+    Counter(Counter),
+    Gauge(Gauge),
+    Ticks(TimeTicks),
+    Arbitrary(DerObject<'a>),
+}
 
+fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
+    match der_read_element_header(i) {
+        IResult::Done(rem,hdr) => {
+            if hdr.is_application() {
+                match hdr.tag {
+                    0 => {
+                        map_res!(
+                            rem,
+                            apply!(der_read_element_content_as,DerTag::OctetString as u8, hdr.len as usize),
+                            |x:DerObjectContent| {
+                                match x {
+                                    DerObjectContent::OctetString(s) if s.len() == 4 => {
+                                        Ok(ObjectSyntax::Address(NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
+                                    },
+                                    _ => Err(DER_TAG_ERROR),
+                                }
+                            }
+                        )
+                    },
+                    1 ... 3 => {
+                        map_res!(
+                            rem,
+                            apply!(der_read_element_content_as, DerTag::Integer as u8, hdr.len as usize),
+                            |x:DerObjectContent| {
+                                x.as_u32().map(|x| {
+                                    match hdr.tag {
+                                        1 => ObjectSyntax::Counter(x),
+                                        2 => ObjectSyntax::Gauge(x),
+                                        3 => ObjectSyntax::Ticks(x),
+                                        _ => unreachable!(),
+                                    }
+                                })
+                            }
+                        )
+                    },
+                    4 => {
+                        let r = der_read_element_content_as(rem, DerTag::OctetString as u8, hdr.len as usize);
+                        r.map(|x| ObjectSyntax::Arbitrary(DerObject::from_obj(x)))
+                    },
+                    _ => IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR))),
+                }
+            } else {
+                        map_res!(
+                            rem,
+                            apply!(der_read_element_content_as, hdr.tag, hdr.len as usize),
+                            |x:DerObjectContent<'a>| {
+                                match x {
+                                    DerObjectContent::Integer(_)     => Ok(ObjectSyntax::Number(DerObject::from_obj(x))),
+                                    DerObjectContent::OctetString(s) => Ok(ObjectSyntax::String(s)),
+                                    DerObjectContent::OID(o)         => Ok(ObjectSyntax::Object(o)),
+                                    DerObjectContent::Null           => Ok(ObjectSyntax::Empty),
+                                    _                                => Err(DER_TAG_ERROR),
+                                }
+                            }
+                        )
+            }
+        },
+        IResult::Incomplete(i) => IResult::Incomplete(i),
+        IResult::Error(e)      => IResult::Error(e)
+    }
+}
 
 #[inline]
 fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
@@ -191,7 +277,7 @@ fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
         i,
         TAG DerTag::Sequence,
         oid: map_res!(parse_der_oid, |x:DerObject| x.as_oid_val()) >>
-        val: parse_der >>
+        val: parse_objectsyntax >>
              // eof!() >>
         (
             SnmpVariable{ oid:oid, val:val }

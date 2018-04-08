@@ -5,7 +5,6 @@ extern crate nom;
 use std::net::Ipv4Addr;
 use nom::IResult;
 use snmp_parser::*;
-use der_parser::{DerObject,DerObjectContent};
 use der_parser::oid::Oid;
 
 static SNMPV1_REQ: &'static [u8] = include_bytes!("../assets/snmpv1_req.bin");
@@ -27,7 +26,7 @@ fn test_snmp_v1_req() {
                 var:vec![
                     SnmpVariable{
                         oid: Oid::from(&[1, 3, 6, 1, 2, 1, 1, 2, 0]),
-                        val: DerObject::from_obj(DerObjectContent::Null)
+                        val: ObjectSyntax::Empty
                     }
                 ],
             }),
