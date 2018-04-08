@@ -8,12 +8,35 @@
 //! See also:
 //!   - [RFC2578](https://tools.ietf.org/html/rfc2578): Structure of Management Information Version 2 (SMIv2)
 
+use std::fmt;
+
 use der_parser::*;
 use nom::IResult;
 
 use snmp::{SnmpPdu,parse_snmp_v1_pdu};
 
 use error::SnmpError;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct SecurityModel(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl SecurityModel {
+    pub const SnmpV1    : SecurityModel = SecurityModel(1);
+    pub const SnmpV2c   : SecurityModel = SecurityModel(2);
+    pub const USM       : SecurityModel = SecurityModel(3);
+}
+
+impl fmt::Debug for SecurityModel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+           1 => f.write_str("SnmpV1"),
+           2 => f.write_str("SnmpV2c"),
+           3 => f.write_str("USM"),
+           n => f.debug_tuple("SecurityModel").field(&n).finish(),
+        }
+    }
+}
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpV3Message<'a> {
@@ -29,7 +52,7 @@ pub struct HeaderData {
     pub msg_id: u32,
     pub msg_max_size: u32,
     pub msg_flags: u8,
-    pub msg_security_model: u32,
+    pub msg_security_model: SecurityModel,
 }
 
 impl HeaderData {
@@ -105,7 +128,7 @@ fn parse_snmp_v3_headerdata<'a>(i:&'a[u8]) -> IResult<&'a[u8],HeaderData> {
                 msg_id: id,
                 msg_max_size: sz,
                 msg_flags: fl,
-                msg_security_model: sm,
+                msg_security_model: SecurityModel(sm),
             }
         )
     ).map(|x| x.1)

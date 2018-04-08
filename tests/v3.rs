@@ -26,7 +26,7 @@ fn test_snmp_v3_req() {
             msg_id: 821490644,
             msg_max_size: 65507,
             msg_flags: 4,
-            msg_security_model: 3,
+            msg_security_model: SecurityModel::USM,
         },
         security_params: &sp,
         data: ScopedPduData::Plaintext(
@@ -52,7 +52,7 @@ fn test_snmp_v3_req_encrypted() {
         IResult::Done(rem,msg) => {
             assert!(rem.is_empty());
             assert_eq!(msg.version, 3);
-            assert_eq!(msg.header_data.msg_security_model, 3);
+            assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
         },
         _ => assert!(false),
     }
