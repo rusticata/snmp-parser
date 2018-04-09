@@ -209,7 +209,7 @@ pub enum ObjectSyntax<'a> {
     Arbitrary(DerObject<'a>),
 }
 
-fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
+pub fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
     match der_read_element_header(i) {
         IResult::Done(rem,hdr) => {
             if hdr.is_application() {
@@ -272,7 +272,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
 }
 
 #[inline]
-fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
+pub fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,
@@ -286,7 +286,7 @@ fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
 }
 
 #[inline]
-fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
+pub fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,
@@ -306,7 +306,7 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
 ///     [APPLICATION 0]          -- in network-byte order
 ///         IMPLICIT OCTET STRING (SIZE (4))
 /// </pre>
-fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
+pub fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
     match parse_der(i) {
         IResult::Done(rem,obj) => {
             if obj.tag != 0 || obj.class != 0b01 {
@@ -329,7 +329,7 @@ fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
 ///     [APPLICATION 3]
 ///         IMPLICIT INTEGER (0..4294967295)
 /// </pre>
-fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
+pub fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
     fn der_read_integer_content(i:&[u8], _tag:u8, len: usize) -> IResult<&[u8],DerObjectContent,u32> {
         der_read_element_content_as(i, DerTag::Integer as u8, len)
     }
@@ -344,7 +344,7 @@ fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
 
 
 
-fn parse_snmp_v1_generic_pdu<'a>(pdu: &'a [u8], tag:PduType) -> IResult<&'a[u8],SnmpPdu<'a>> {
+pub fn parse_snmp_v1_generic_pdu<'a>(pdu: &'a [u8], tag:PduType) -> IResult<&'a[u8],SnmpPdu<'a>> {
     do_parse!(pdu,
               req_id:       map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               err:          map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
@@ -364,7 +364,7 @@ fn parse_snmp_v1_generic_pdu<'a>(pdu: &'a [u8], tag:PduType) -> IResult<&'a[u8],
               ))
 }
 
-fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+pub fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
     do_parse!(
         pdu,
         enterprise:    map_res!(parse_der_oid, |x: DerObject| x.as_oid_val()) >>
