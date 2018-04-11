@@ -14,6 +14,7 @@ use der_parser::*;
 use nom::IResult;
 
 use snmp::{SnmpPdu,parse_snmp_v1_pdu};
+pub use usm::{UsmSecurityParameters,parse_usm_security_parameters};
 
 use error::SnmpError;
 
@@ -39,12 +40,17 @@ impl fmt::Debug for SecurityModel {
 }
 
 #[derive(Debug,PartialEq)]
+pub enum SecurityParameters<'a> {
+    Raw(&'a[u8]),
+    USM(UsmSecurityParameters<'a>)
+}
+
+#[derive(Debug,PartialEq)]
 pub struct SnmpV3Message<'a> {
     pub version: u32,
     pub header_data: HeaderData,
-    pub security_params: &'a[u8],
+    pub security_params: SecurityParameters<'a>,
     pub data: ScopedPduData<'a>,
-    // pub data: DerObject<'a>,
 }
 
 #[derive(Debug,PartialEq)]
@@ -92,6 +98,23 @@ fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a[u8],Scoped
     }
 }
 
+fn parse_secp<'a>(x:DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>,DerError> {
+    match x.as_slice() {
+        Ok(i) => {
+            match hdr.msg_security_model {
+                SecurityModel::USM => {
+                    match parse_usm_security_parameters(i) {
+                        IResult::Done(_,usm) => Ok(SecurityParameters::USM(usm)),
+                        _                    => Err(DerError::DerValueError)
+                    }
+                },
+                _                  => Ok(SecurityParameters::Raw(i))
+            }
+        },
+        _     => Err(DerError::DerValueError)
+    }
+}
+
 pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpError> {
     fix_error!(
         i,
@@ -100,7 +123,7 @@ pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpErr
             TAG DerTag::Sequence,
             vers: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
             hdr:  parse_snmp_v3_headerdata >>
-            secp: map_res!(parse_der_octetstring, |x: DerObject<'a>| x.as_slice()) >>
+            secp: map_res!(parse_der_octetstring, |x: DerObject<'a>| parse_secp(x,&hdr)) >>
             data: apply!(parse_snmp_v3_data,&hdr) >>
             ({
                 SnmpV3Message{

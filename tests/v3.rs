@@ -11,7 +11,14 @@ static SNMPV3_REQ: &'static [u8] = include_bytes!("../assets/snmpv3_req.bin");
 fn test_snmp_v3_req() {
     let empty = &b""[..];
     let bytes = SNMPV3_REQ;
-    let sp = [48, 14, 4, 0, 2, 1, 0, 2, 1, 0, 4, 0, 4, 0, 4, 0];
+    let sp = SecurityParameters::USM(UsmSecurityParameters{
+        msg_authoritative_engine_id: b"",
+        msg_authoritative_engine_boots: 0,
+        msg_authoritative_engine_time: 0,
+        msg_user_name: String::from(""),
+        msg_authentication_parameters: b"",
+        msg_privacy_parameters: b"",
+    });
     let cei = [0x80, 0x00, 0x1f, 0x88, 0x80, 0x59, 0xdc, 0x48, 0x61, 0x45, 0xa2, 0x63, 0x22];
     let data = SnmpPdu::Generic(SnmpGenericPdu{
         pdu_type: PduType::GetRequest,
@@ -28,7 +35,7 @@ fn test_snmp_v3_req() {
             msg_flags: 4,
             msg_security_model: SecurityModel::USM,
         },
-        security_params: &sp,
+        security_params: sp,
         data: ScopedPduData::Plaintext(
             ScopedPdu{
                 ctx_engine_id: &cei,
