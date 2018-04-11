@@ -13,8 +13,6 @@ use nom::{IResult,ErrorKind};
 use der_parser::*;
 use der_parser::oid::Oid;
 
-use error::SnmpError;
-
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct PduType(pub u8);
 
@@ -167,26 +165,26 @@ impl<'a> SnmpTrapPdu<'a> {
     }
 }
 
-impl<'a> SnmpMessage<'a> {
-    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
-        match self.parsed_pdu {
-            SnmpPdu::Generic(ref pdu) => pdu.var.iter(),
-            SnmpPdu::TrapV1(ref pdu)  => pdu.var.iter(),
-        }
-    }
-}
-
 #[derive(Debug,PartialEq)]
 pub struct SnmpMessage<'a> {
     pub version: u32,
-    pub community: &'a[u8],
-    pub pdu_type: PduType,
-    pub parsed_pdu: SnmpPdu<'a>,
+    pub community: String,
+    pub pdu: SnmpPdu<'a>,
 }
 
 impl<'a> SnmpMessage<'a> {
-    pub fn get_community(self: &SnmpMessage<'a>) -> &'a str {
-        str::from_utf8(self.community).unwrap()
+    pub fn pdu_type(&self) -> PduType {
+        match self.pdu {
+            SnmpPdu::Generic(ref pdu) => pdu.pdu_type,
+            SnmpPdu::TrapV1(_)        => PduType::TrapV1,
+        }
+    }
+
+    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+        match self.pdu {
+            SnmpPdu::Generic(ref pdu) => pdu.var.iter(),
+            SnmpPdu::TrapV1(ref pdu)  => pdu.var.iter(),
+        }
     }
 }
 
@@ -388,50 +386,6 @@ fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
     )
 }
 
-/// Caller is responsible to provide a DerObject of type implicit Sequence, containing
-/// (Integer,OctetString,Unknown)
-pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMessage<'a>,SnmpError> {
-    if let DerObjectContent::Sequence(ref v) = obj.content {
-        if v.len() != 3 { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidMessage))); };
-        let vers = match v[0].content.as_u32() {
-            Ok (u) if u <= 2 => u,
-            _  => return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidVersion))),
-        };
-        let community = v[1].content.as_slice().unwrap();
-        let pdu_type = PduType(v[2].tag);
-        let pdu = match v[2].content.as_slice() {
-            Ok(p) => p,
-            _     => return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))),
-        };
-        // v[2] is an implicit sequence: class 2 structured 1
-        // tag is the pdu_type
-        let pdu_res = match pdu_type {
-            PduType::GetRequest |
-            PduType::GetNextRequest |
-            PduType::Response |
-            PduType::SetRequest |
-            PduType::Report     => parse_snmp_v1_generic_pdu(pdu, pdu_type),
-            PduType::TrapV1     => parse_snmp_v1_trap_pdu(pdu),
-            _                   => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
-        };
-        match pdu_res {
-            IResult::Done(rem,r) => {
-                IResult::Done(rem,
-                              SnmpMessage{
-                                  version: vers,
-                                  community: community,
-                                  pdu_type: pdu_type,
-                                  parsed_pdu: r,
-                              }
-                             )
-            },
-            _ => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
-        }
-    } else {
-        IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidMessage)))
-    }
-}
-
 /// Top-level message
 ///
 /// <pre>
@@ -449,17 +403,24 @@ pub fn parse_snmp_v1_content<'a>(obj: DerObject<'a>) -> IResult<&'a[u8],SnmpMess
 ///                 ANY          -- authentication is being used
 ///         }
 /// </pre>
-pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>,SnmpError> {
-    flat_map!(
+pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
+    parse_der_struct!(
         i,
-        fix_error!(SnmpError,
-                   parse_der_sequence_defined!(
-                       parse_der_integer,
-                       parse_der_octetstring,
-                       parse_der // XXX type is ANY
-                       )),
-        parse_snmp_v1_content
-    )
+        TAG DerTag::Sequence,
+        version:   map_res!(parse_der_integer, |x:DerObject| x.as_u32()) >>
+        community: map_res!(
+            map_res!(parse_der_octetstring, |x:DerObject<'a>| x.as_slice()),
+            |s| str::from_utf8(s)
+        ) >>
+        pdu:       parse_snmp_v1_pdu >>
+        (
+            SnmpMessage{
+                version: version,
+                community: community.to_string(),
+                pdu: pdu
+            }
+        )
+    ).map(|x| x.1)
 }
 
 pub fn parse_snmp_v1_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
