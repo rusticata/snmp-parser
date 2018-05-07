@@ -217,6 +217,21 @@ pub enum ObjectSyntax<'a> {
     Arbitrary(DerObject<'a>),
 }
 
+pub fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
+    match parse_der_octetstring(i) {
+        IResult::Done(rem,ref obj) => {
+            match obj.content {
+                DerObjectContent::OctetString(s) => {
+                    IResult::Done(rem, s)
+                }
+                _ => IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR))),
+            }
+        }
+        IResult::Incomplete(i) => IResult::Incomplete(i),
+        IResult::Error(e) => IResult::Error(e)
+    }
+}
+
 fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
     match der_read_element_header(i) {
         IResult::Done(rem,hdr) => {
@@ -354,9 +369,9 @@ fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
 
 fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag:PduType) -> IResult<&[u8],SnmpPdu> {
     do_parse!(pdu,
-              req_id:       map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
-              err:          map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
-              err_index:    map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
+              req_id:       parse_der_u32 >>
+              err:          parse_der_u32 >>
+              err_index:    parse_der_u32 >>
                             error_if!(true == false, ErrorKind::Custom(128)) >>
               var_bindings: parse_varbind_list >>
               (
@@ -377,8 +392,8 @@ fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
         pdu,
         enterprise:    map_res!(parse_der_oid, |x: DerObject| x.as_oid_val()) >>
         agent_addr:    parse_networkaddress >>
-        generic_trap:  map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
-        specific_trap: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
+        generic_trap:  parse_der_u32 >>
+        specific_trap: parse_der_u32 >>
         timestamp:     parse_timeticks >>
         var_bindings:  parse_varbind_list >>
         (
@@ -413,13 +428,13 @@ fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
 ///                 ANY          -- authentication is being used
 ///         }
 /// </pre>
-pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
+pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,
-        version:   map_res!(parse_der_integer, |x:DerObject| x.as_u32()) >>
+        version:   parse_der_u32 >>
         community: map_res!(
-            map_res!(parse_der_octetstring, |x:DerObject<'a>| x.as_slice()),
+            parse_der_octetstring_as_slice,
             |s| str::from_utf8(s)
         ) >>
         pdu:       parse_snmp_v1_pdu >>
