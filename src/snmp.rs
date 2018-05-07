@@ -77,7 +77,7 @@ impl fmt::Debug for TrapType {
 /// This CHOICE represents an address from one of possibly several
 /// protocol families.  Currently, only one protocol family, the Internet
 /// family, is present in this CHOICE.
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum NetworkAddress {
     IPv4(Ipv4Addr),
 }
@@ -153,6 +153,13 @@ pub enum SnmpPdu<'a> {
     TrapV1(SnmpTrapPdu<'a>),
 }
 
+#[derive(Debug,PartialEq)]
+pub struct SnmpMessage<'a> {
+    pub version: u32,
+    pub community: String,
+    pub pdu: SnmpPdu<'a>,
+}
+
 impl<'a> SnmpGenericPdu<'a> {
     pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
         self.var.iter()
@@ -165,26 +172,29 @@ impl<'a> SnmpTrapPdu<'a> {
     }
 }
 
-#[derive(Debug,PartialEq)]
-pub struct SnmpMessage<'a> {
-    pub version: u32,
-    pub community: String,
-    pub pdu: SnmpPdu<'a>,
-}
-
-impl<'a> SnmpMessage<'a> {
+impl<'a> SnmpPdu<'a> {
     pub fn pdu_type(&self) -> PduType {
-        match self.pdu {
+        match self {
             SnmpPdu::Generic(ref pdu) => pdu.pdu_type,
             SnmpPdu::TrapV1(_)        => PduType::TrapV1,
         }
     }
 
     pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
-        match self.pdu {
+        match self {
             SnmpPdu::Generic(ref pdu) => pdu.var.iter(),
             SnmpPdu::TrapV1(ref pdu)  => pdu.var.iter(),
         }
+    }
+}
+
+impl<'a> SnmpMessage<'a> {
+    pub fn pdu_type(&self) -> PduType {
+        self.pdu.pdu_type()
+    }
+
+    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+        self.pdu.vars_iter()
     }
 }
 
@@ -278,7 +288,7 @@ fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
         val: parse_objectsyntax >>
              // eof!() >>
         (
-            SnmpVariable{ oid:oid, val:val }
+            SnmpVariable{ oid, val }
         )
     ).map(|x| x.1)
 }
@@ -342,7 +352,7 @@ fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
 
 
 
-fn parse_snmp_v1_generic_pdu<'a>(pdu: &'a [u8], tag:PduType) -> IResult<&'a[u8],SnmpPdu<'a>> {
+fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag:PduType) -> IResult<&[u8],SnmpPdu> {
     do_parse!(pdu,
               req_id:       map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
               err:          map_res!(parse_der_integer,|x: DerObject| x.as_u32()) >>
@@ -353,16 +363,16 @@ fn parse_snmp_v1_generic_pdu<'a>(pdu: &'a [u8], tag:PduType) -> IResult<&'a[u8],
                   SnmpPdu::Generic(
                       SnmpGenericPdu {
                           pdu_type:  tag,
-                          req_id:    req_id,
+                          req_id,
                           err:       ErrorStatus(err),
-                          err_index: err_index,
+                          err_index,
                           var:       var_bindings
                       }
                   )
               ))
 }
 
-fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
     do_parse!(
         pdu,
         enterprise:    map_res!(parse_der_oid, |x: DerObject| x.as_oid_val()) >>
@@ -374,11 +384,11 @@ fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
         (
             SnmpPdu::TrapV1(
                 SnmpTrapPdu {
-                    enterprise:    enterprise,
-                    agent_addr:    agent_addr,
+                    enterprise,
+                    agent_addr,
                     generic_trap:  TrapType(generic_trap as u8),
-                    specific_trap: specific_trap,
-                    timestamp:     timestamp,
+                    specific_trap,
+                    timestamp,
                     var:           var_bindings
                 }
             )
@@ -415,15 +425,15 @@ pub fn parse_snmp_v1<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpMessage<'a>> {
         pdu:       parse_snmp_v1_pdu >>
         (
             SnmpMessage{
-                version: version,
+                version,
                 community: community.to_string(),
-                pdu: pdu
+                pdu
             }
         )
     ).map(|x| x.1)
 }
 
-pub fn parse_snmp_v1_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
+pub fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
     match der_read_element_header(i) {
         IResult::Done(rem,hdr) => {
             match PduType(hdr.tag) {
@@ -433,7 +443,7 @@ pub fn parse_snmp_v1_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpPdu<'a>> {
                 PduType::SetRequest |
                 PduType::Report     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
                 PduType::TrapV1     => parse_snmp_v1_trap_pdu(rem),
-                _                   => { return IResult::Error(error_code!(ErrorKind::Custom(128))); },
+                _                   => IResult::Error(error_code!(ErrorKind::Custom(128))),
                 // _                   => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
         },

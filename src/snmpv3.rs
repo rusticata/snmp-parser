@@ -98,7 +98,7 @@ fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a[u8],Scoped
     }
 }
 
-fn parse_secp<'a>(x:DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>,DerError> {
+fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>,DerError> {
     match x.as_slice() {
         Ok(i) => {
             match hdr.msg_security_model {
@@ -123,21 +123,21 @@ pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpErr
             TAG DerTag::Sequence,
             vers: map_res!(parse_der_integer, |x: DerObject| x.as_u32()) >>
             hdr:  parse_snmp_v3_headerdata >>
-            secp: map_res!(parse_der_octetstring, |x: DerObject<'a>| parse_secp(x,&hdr)) >>
+            secp: map_res!(parse_der_octetstring, |x: DerObject<'a>| parse_secp(&x,&hdr)) >>
             data: apply!(parse_snmp_v3_data,&hdr) >>
             ({
                 SnmpV3Message{
                     version: vers,
                     header_data: hdr,
                     security_params: secp,
-                    data: data
+                    data
                 }
             })
         )
     ).map(|x| x.1)
 }
 
-fn parse_snmp_v3_headerdata<'a>(i:&'a[u8]) -> IResult<&'a[u8],HeaderData> {
+fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8],HeaderData> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,
@@ -167,7 +167,7 @@ fn parse_snmp_v3_plaintext_pdu<'a>(i:&'a[u8]) -> IResult<&'a[u8],ScopedPduData<'
             ScopedPduData::Plaintext(ScopedPdu{
                 ctx_engine_id: ctx_eng_id,
                 ctx_engine_name: ctx_name,
-                data: data
+                data
             })
         )
     ).map(|x| x.1)
