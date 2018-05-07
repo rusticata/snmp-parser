@@ -174,14 +174,14 @@ impl<'a> SnmpTrapPdu<'a> {
 
 impl<'a> SnmpPdu<'a> {
     pub fn pdu_type(&self) -> PduType {
-        match self {
+        match *self {
             SnmpPdu::Generic(ref pdu) => pdu.pdu_type,
             SnmpPdu::TrapV1(_)        => PduType::TrapV1,
         }
     }
 
     pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
-        match self {
+        match *self {
             SnmpPdu::Generic(ref pdu) => pdu.var.iter(),
             SnmpPdu::TrapV1(ref pdu)  => pdu.var.iter(),
         }
