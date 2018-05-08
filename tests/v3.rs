@@ -67,3 +67,17 @@ fn test_snmp_v3_req_encrypted() {
     }
 }
 
+#[test]
+fn test_snmp_v3_report() {
+    let bytes = include_bytes!("../assets/snmpv3-report.bin");
+    let res = parse_snmp_v3(bytes);
+    eprintln!("{:?}", res);
+    match res {
+        IResult::Done(rem,msg) => {
+            assert!(rem.is_empty());
+            assert_eq!(msg.version, 3);
+            assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
+        },
+        _ => assert!(false),
+    }
+}
