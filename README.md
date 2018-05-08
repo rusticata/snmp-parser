@@ -1,6 +1,9 @@
 # snmp-parser
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE-MIT)
+[![Apache License 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE-APACHE)
 [![Build Status](https://travis-ci.org/rusticata/snmp-parser.svg?branch=master)](https://travis-ci.org/rusticata/snmp-parser)
+[![Crates.io Version](https://img.shields.io/crates/v/snmp-parser.svg)](https://crates.io/crates/snmp-parser)
 
 ## Overview
 
