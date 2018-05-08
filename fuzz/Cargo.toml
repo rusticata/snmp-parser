@@ -1,0 +1,26 @@
+
+[package]
+name = "snmp-parser-fuzz"
+version = "0.0.1"
+authors = ["Automatically generated"]
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies.snmp-parser]
+path = ".."
+[dependencies.libfuzzer-sys]
+git = "https://github.com/rust-fuzz/libfuzzer-sys.git"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzzer_snmp_v1"
+path = "fuzzers/fuzzer_snmp_v1.rs"
+
+[[bin]]
+name = "fuzzer_snmp_v3"
+path = "fuzzers/fuzzer_snmp_v3.rs"
