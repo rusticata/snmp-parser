@@ -1,7 +1,7 @@
 [package]
 name = "snmp-parser"
 version = "0.1.0"
-description = "Parser for the TLS protocol"
+description = "Parser for the SNMP protocol"
 license = "MIT/Apache-2.0"
 keywords = ["SNMP","protocol","parser","nom"]
 authors = ["Pierre Chifflier <chifflier@wzdftpd.net>"]
