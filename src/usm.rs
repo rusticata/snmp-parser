@@ -38,5 +38,5 @@ pub fn parse_usm_security_parameters(i:&[u8]) -> IResult<&[u8],UsmSecurityParame
                 msg_privacy_parameters: priv_p,
             }
         )
-    ).map(|x| x.1)
+    ).map(|(rem,x)| (rem,x.1))
 }

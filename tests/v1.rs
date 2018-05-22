@@ -3,7 +3,6 @@ extern crate snmp_parser;
 extern crate nom;
 
 use std::net::Ipv4Addr;
-use nom::IResult;
 use snmp_parser::*;
 use der_parser::oid::Oid;
 
@@ -13,7 +12,7 @@ static SNMPV1_REQ: &'static [u8] = include_bytes!("../assets/snmpv1_req.bin");
 fn test_snmp_v1_req() {
     let empty = &b""[..];
     let bytes = SNMPV1_REQ;
-    let expected = IResult::Done(empty,SnmpMessage{
+    let expected = Ok((empty,SnmpMessage{
         version: 0,
         community: String::from("public"),
         pdu:SnmpPdu::Generic(
@@ -29,10 +28,10 @@ fn test_snmp_v1_req() {
                     }
                 ],
             }),
-    });
+    }));
     let res = parse_snmp_v1(&bytes);
     match &res {
-        &IResult::Done(_,ref r) => {
+        &Ok((_,ref r)) => {
             // debug!("r: {:?}",r);
             eprintln!("SNMP: v={}, c={:?}, pdu_type={:?}",r.version,r.community,r.pdu_type());
             // debug!("PDU: type={}, {:?}", pdu_type, pdu_res);
@@ -51,7 +50,7 @@ static SNMPV1_TRAP_COLDSTART: &'static [u8] = include_bytes!("../assets/snmpv1_t
 fn test_snmp_v1_trap_coldstart() {
     let bytes = SNMPV1_TRAP_COLDSTART;
     match parse_snmp_v1(bytes) {
-        IResult::Done(rem,pdu) => {
+        Ok((rem,pdu)) => {
             // println!("pdu: {:?}", pdu);
             assert!(rem.is_empty());
             assert_eq!(pdu.version, 0);

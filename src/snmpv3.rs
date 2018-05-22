@@ -104,8 +104,8 @@ fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameter
             match hdr.msg_security_model {
                 SecurityModel::USM => {
                     match parse_usm_security_parameters(i) {
-                        IResult::Done(_,usm) => Ok(SecurityParameters::USM(usm)),
-                        _                    => Err(DerError::DerValueError)
+                        Ok((_,usm)) => Ok(SecurityParameters::USM(usm)),
+                        _           => Err(DerError::DerValueError)
                     }
                 },
                 _                  => Ok(SecurityParameters::Raw(i))
@@ -134,7 +134,7 @@ pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpErr
                 }
             })
         )
-    ).map(|x| x.1)
+    ).map(|(rem,x)| (rem,x.1))
 }
 
 fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8],HeaderData> {
@@ -154,7 +154,7 @@ fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8],HeaderData> {
                 msg_security_model: SecurityModel(sm),
             }
         )
-    ).map(|x| x.1)
+    ).map(|(rem,x)| (rem,x.1))
 }
 
 fn parse_snmp_v3_plaintext_pdu(i:&[u8]) -> IResult<&[u8],ScopedPduData> {
@@ -170,5 +170,5 @@ fn parse_snmp_v3_plaintext_pdu(i:&[u8]) -> IResult<&[u8],ScopedPduData> {
                 data
             })
         )
-    ).map(|x| x.1)
+    ).map(|(rem,x)| (rem,x.1))
 }

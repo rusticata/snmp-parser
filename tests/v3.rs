@@ -4,7 +4,6 @@ extern crate der_parser;
 extern crate snmp_parser;
 extern crate nom;
 
-use nom::IResult;
 use snmp_parser::*;
 
 static SNMPV3_REQ: &'static [u8] = include_bytes!("../assets/snmpv3_req.bin");
@@ -29,7 +28,7 @@ fn test_snmp_v3_req() {
         err_index: 0,
         var: vec![]
     });
-    let expected = IResult::Done(empty,SnmpV3Message{
+    let expected = Ok((empty,SnmpV3Message{
         version: 3,
         header_data: HeaderData{
             msg_id: 821490644,
@@ -45,7 +44,7 @@ fn test_snmp_v3_req() {
                 data: data,
             }
         ),
-    });
+    }));
     let res = parse_snmp_v3(&bytes);
     // eprintln!("{:?}", res);
     assert_eq!(res, expected);
@@ -58,7 +57,7 @@ fn test_snmp_v3_req_encrypted() {
     let res = parse_snmp_v3(bytes);
     // eprintln!("{:?}", res);
     match res {
-        IResult::Done(rem,msg) => {
+        Ok((rem,msg)) => {
             assert!(rem.is_empty());
             assert_eq!(msg.version, 3);
             assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
@@ -73,7 +72,7 @@ fn test_snmp_v3_report() {
     let res = parse_snmp_v3(bytes);
     eprintln!("{:?}", res);
     match res {
-        IResult::Done(rem,msg) => {
+        Ok((rem,msg)) => {
             assert!(rem.is_empty());
             assert_eq!(msg.version, 3);
             assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);

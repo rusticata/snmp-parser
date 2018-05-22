@@ -12,4 +12,12 @@ pub enum SnmpError {
     InvalidHeaderData,
     /// Invalid SNMPv3 scoped PDU
     InvalidScopedPduData,
+    /// Nom error
+    NomError(u32)
+}
+
+impl From<u32> for SnmpError{
+    fn from(e: u32) -> SnmpError {
+        SnmpError::NomError(e)
+    }
 }

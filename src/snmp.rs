@@ -9,7 +9,7 @@
 use std::{fmt,str};
 use std::net::Ipv4Addr;
 use std::slice::Iter;
-use nom::{IResult,ErrorKind};
+use nom::{IResult,Err,ErrorKind};
 use der_parser::*;
 use der_parser::oid::Oid;
 
@@ -219,22 +219,21 @@ pub enum ObjectSyntax<'a> {
 
 pub fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
     match parse_der_octetstring(i) {
-        IResult::Done(rem,ref obj) => {
+        Ok((rem,ref obj)) => {
             match obj.content {
                 DerObjectContent::OctetString(s) => {
-                    IResult::Done(rem, s)
+                    Ok((rem, s))
                 }
-                _ => IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR))),
+                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR)))),
             }
         }
-        IResult::Incomplete(i) => IResult::Incomplete(i),
-        IResult::Error(e) => IResult::Error(e)
+        Err(e)            => Err(e)
     }
 }
 
 fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
     match der_read_element_header(i) {
-        IResult::Done(rem,hdr) => {
+        Ok((rem,hdr)) => {
             if hdr.is_application() {
                 match hdr.tag {
                     0 => {
@@ -269,9 +268,9 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     },
                     4 => {
                         let r = der_read_element_content_as(rem, DerTag::OctetString as u8, hdr.len as usize);
-                        r.map(|x| ObjectSyntax::Arbitrary(DerObject::from_obj(x)))
+                        r.map(|(rem,x)| (rem,ObjectSyntax::Arbitrary(DerObject::from_obj(x))))
                     },
-                    _ => IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR))),
+                    _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR)))),
                 }
             } else {
                         map_res!(
@@ -289,8 +288,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                         )
             }
         },
-        IResult::Incomplete(i) => IResult::Incomplete(i),
-        IResult::Error(e)      => IResult::Error(e)
+        Err(e)        => Err(e)
     }
 }
 
@@ -305,7 +303,7 @@ fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
         (
             SnmpVariable{ oid, val }
         )
-    ).map(|x| x.1)
+    ).map(|(rem,x)| (rem,x.1))
 }
 
 #[inline]
@@ -313,10 +311,10 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,
-        l: many0!(parse_varbind) >>
+        l: many0!(complete!(parse_varbind)) >>
            // eof!() >>
         ( l )
-    ).map(|x| x.1)
+    ).map(|(rem,x)| (rem,x.1))
 }
 
 /// <pre>
@@ -331,19 +329,18 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
 /// </pre>
 fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
     match parse_der(i) {
-        IResult::Done(rem,obj) => {
+        Ok((rem,obj)) => {
             if obj.tag != 0 || obj.class != 0b01 {
-                return IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR)));
+                return Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR))));
             }
             match obj.content {
                 DerObjectContent::Unknown(s) if s.len() == 4 => {
-                    IResult::Done(rem, NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3])))
+                    Ok((rem, NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
                 },
-                _ => IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR))),
+                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR)))),
             }
         },
-        IResult::Incomplete(i) => IResult::Incomplete(i),
-        IResult::Error(e)      => IResult::Error(e),
+        Err(e)        => Err(e)
     }
 }
 
@@ -445,12 +442,12 @@ pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
                 pdu
             }
         )
-    ).map(|x| x.1)
+    ).map(|(rem,x)| (rem,x.1))
 }
 
 pub fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
     match der_read_element_header(i) {
-        IResult::Done(rem,hdr) => {
+        Ok((rem,hdr)) => {
             match PduType(hdr.tag) {
                 PduType::GetRequest |
                 PduType::GetNextRequest |
@@ -458,12 +455,13 @@ pub fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
                 PduType::SetRequest |
                 PduType::Report     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
                 PduType::TrapV1     => parse_snmp_v1_trap_pdu(rem),
-                _                   => IResult::Error(error_code!(ErrorKind::Custom(128))),
+                _                   => Err(Err::Error(error_position!(i, ErrorKind::Custom(128)))),
                 // _                   => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
         },
-        IResult::Incomplete(i) => IResult::Incomplete(i),
-        IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
-        // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),
+        Err(e)        => Err(e)
+        // IResult::Incomplete(i) => IResult::Incomplete(i),
+        // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
+        // // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),
     }
 }
