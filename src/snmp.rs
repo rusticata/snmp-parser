@@ -369,7 +369,6 @@ fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag:PduType) -> IResult<&[u8],SnmpPdu> 
               req_id:       parse_der_u32 >>
               err:          parse_der_u32 >>
               err_index:    parse_der_u32 >>
-                            error_if!(true == false, ErrorKind::Custom(128)) >>
               var_bindings: parse_varbind_list >>
               (
                   SnmpPdu::Generic(
