@@ -285,6 +285,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     _ => IResult::Error(error_code!(ErrorKind::Custom(DER_TAG_ERROR))),
                 }
             } else {
+                        if hdr.len == 0 { return IResult::Done(rem, ObjectSyntax::Empty); }
                         map_res!(
                             rem,
                             apply!(der_read_element_content_as, hdr.tag, hdr.len as usize),
