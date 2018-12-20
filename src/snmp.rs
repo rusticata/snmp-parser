@@ -138,6 +138,14 @@ pub struct SnmpGenericPdu<'a> {
 }
 
 #[derive(Debug,PartialEq)]
+pub struct SnmpBulkPdu<'a> {
+    pub req_id: u32,
+    pub non_repeaters: u32,
+    pub max_repetitions: u32,
+    pub var: Vec<SnmpVariable<'a>>,
+}
+
+#[derive(Debug,PartialEq)]
 pub struct SnmpTrapPdu<'a> {
     pub enterprise: Oid,
     pub agent_addr: NetworkAddress,
@@ -150,6 +158,7 @@ pub struct SnmpTrapPdu<'a> {
 #[derive(Debug,PartialEq)]
 pub enum SnmpPdu<'a> {
     Generic(SnmpGenericPdu<'a>),
+    Bulk(SnmpBulkPdu<'a>),
     TrapV1(SnmpTrapPdu<'a>),
 }
 
@@ -176,6 +185,7 @@ impl<'a> SnmpPdu<'a> {
     pub fn pdu_type(&self) -> PduType {
         match *self {
             SnmpPdu::Generic(ref pdu) => pdu.pdu_type,
+            SnmpPdu::Bulk(_)          => PduType::GetBulkRequest,
             SnmpPdu::TrapV1(_)        => PduType::TrapV1,
         }
     }
@@ -183,6 +193,7 @@ impl<'a> SnmpPdu<'a> {
     pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
         match *self {
             SnmpPdu::Generic(ref pdu) => pdu.var.iter(),
+            SnmpPdu::Bulk(ref pdu)    => pdu.var.iter(),
             SnmpPdu::TrapV1(ref pdu)  => pdu.var.iter(),
         }
     }
@@ -411,6 +422,24 @@ fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
     )
 }
 
+fn parse_snmp_v1_bulk_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
+    do_parse!(pdu,
+              req_id:          parse_der_u32 >>
+              non_repeaters:   parse_der_u32 >>
+              max_repetitions: parse_der_u32 >>
+              var_bindings:    parse_varbind_list >>
+              (
+                  SnmpPdu::Bulk(
+                      SnmpBulkPdu {
+                          req_id,
+                          non_repeaters,
+                          max_repetitions,
+                          var:       var_bindings
+                      }
+                  )
+              ))
+}
+
 /// Top-level message
 ///
 /// <pre>
@@ -456,10 +485,13 @@ pub fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
                 PduType::GetNextRequest |
                 PduType::Response |
                 PduType::SetRequest |
-                PduType::Report     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
-                PduType::TrapV1     => parse_snmp_v1_trap_pdu(rem),
-                _                   => IResult::Error(error_code!(ErrorKind::Custom(128))),
-                // _                   => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
+                PduType::InformRequest |
+                PduType::TrapV2 |
+                PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
+                PduType::GetBulkRequest => parse_snmp_v1_bulk_pdu(rem),
+                PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
+                _                       => IResult::Error(error_code!(ErrorKind::Custom(128))),
+                // _                      => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
         },
         IResult::Incomplete(i) => IResult::Incomplete(i),
