@@ -1,6 +1,6 @@
 [package]
 name = "snmp-parser"
-version = "0.1.0"
+version = "0.1.1"
 description = "Parser for the TLS protocol"
 license = "MIT/Apache-2.0"
 keywords = ["SNMP","protocol","parser","nom"]
