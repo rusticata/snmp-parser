@@ -13,7 +13,7 @@ use std::fmt;
 use der_parser::*;
 use nom::IResult;
 
-use snmp::{SnmpPdu,parse_der_octetstring_as_slice,parse_snmp_v1_pdu};
+use snmp::{SnmpPdu,parse_der_octetstring_as_slice,parse_snmp_v2c_pdu};
 pub use usm::{UsmSecurityParameters,parse_usm_security_parameters};
 
 use error::SnmpError;
@@ -115,6 +115,7 @@ fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameter
     }
 }
 
+/// Parse an SNMPv3 top-level message
 pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpError> {
     fix_error!(
         i,
@@ -162,7 +163,7 @@ fn parse_snmp_v3_plaintext_pdu(i:&[u8]) -> IResult<&[u8],ScopedPduData> {
         i,
         ctx_eng_id: parse_der_octetstring_as_slice >>
         ctx_name:   parse_der_octetstring_as_slice >>
-        data:       parse_snmp_v1_pdu >>
+        data:       parse_snmp_v2c_pdu >>
         (
             ScopedPduData::Plaintext(ScopedPdu{
                 ctx_engine_id: ctx_eng_id,

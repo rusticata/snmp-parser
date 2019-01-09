@@ -3,7 +3,6 @@ extern crate der_parser;
 extern crate snmp_parser;
 extern crate nom;
 
-use nom::IResult;
 use snmp_parser::*;
 use der_parser::oid::Oid;
 
@@ -38,7 +37,7 @@ fn test_snmp_v2_get() {
                 ],
             }),
     }));
-    let res = parse_snmp_v1(&bytes);
+    let res = parse_snmp_v2c(&bytes);
     match &res {
         &Ok((_,ref r)) => {
             // debug!("r: {:?}",r);

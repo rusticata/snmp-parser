@@ -2,6 +2,7 @@
 //!
 //! SNMP is defined in the following RFCs:
 //!   - [RFC1157](https://tools.ietf.org/html/rfc1157): SNMP v1
+//!   - [RFC1442](https://tools.ietf.org/html/rfc1442): Structure of Management Information for version 2 of the Simple Network Management Protocol (SNMPv2)
 //!   - [RFC1902](https://tools.ietf.org/html/rfc1902): SNMP v2 SMI
 //!   - [RFC3416](https://tools.ietf.org/html/rfc3416): SNMP v2
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
@@ -228,7 +229,7 @@ pub enum ObjectSyntax<'a> {
     Arbitrary(DerObject<'a>),
 }
 
-pub fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
+pub(crate) fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
     match parse_der_octetstring(i) {
         Ok((rem,ref obj)) => {
             match obj.content {
@@ -242,6 +243,7 @@ pub fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
     }
 }
 
+// Defined in RFC1442
 fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
@@ -437,6 +439,8 @@ fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
     )
 }
 
+/// Parse a SNMP v1 message.
+///
 /// Top-level message
 ///
 /// <pre>
@@ -459,6 +463,7 @@ pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
         i,
         TAG DerTag::Sequence,
         version:   parse_der_u32 >>
+                   error_if!(version != 0, ErrorKind::Tag) >>
         community: map_res!(
             parse_der_octetstring_as_slice,
             |s| str::from_utf8(s)
@@ -474,7 +479,67 @@ pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
     ).map(|(rem,x)| (rem,x.1))
 }
 
-pub fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
+pub(crate) fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
+    match der_read_element_header(i) {
+        Ok((rem,hdr)) => {
+            match PduType(hdr.tag) {
+                PduType::GetRequest |
+                PduType::GetNextRequest |
+                PduType::Response |
+                PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
+                PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
+                _                       => Err(Err::Error(error_position!(i, ErrorKind::Custom(128)))),
+                // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
+            }
+        },
+        Err(e)        => Err(e)
+        // IResult::Incomplete(i) => IResult::Incomplete(i),
+        // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
+        // // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),
+    }
+}
+
+/// Parse a SNMP v2c message.
+///
+/// Top-level message
+///
+/// <pre>
+/// Message ::=
+///         SEQUENCE {
+///             version
+///                 INTEGER {
+///                     version(1)  -- modified from RFC 1157
+///                 },
+///
+///             community           -- community name
+///                 OCTET STRING,
+///
+///             data                -- PDUs as defined in [4]
+///                 ANY
+///         }
+/// </pre>
+pub fn parse_snmp_v2c(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
+    parse_der_struct!(
+        i,
+        TAG DerTag::Sequence,
+        version:   parse_der_u32 >>
+                   error_if!(version != 1, ErrorKind::Tag) >>
+        community: map_res!(
+            parse_der_octetstring_as_slice,
+            |s| str::from_utf8(s)
+        ) >>
+        pdu:       parse_snmp_v2c_pdu >>
+        (
+            SnmpMessage{
+                version,
+                community: community.to_string(),
+                pdu
+            }
+        )
+    ).map(|(rem,x)| (rem,x.1))
+}
+
+pub(crate) fn parse_snmp_v2c_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
             match PduType(hdr.tag) {
