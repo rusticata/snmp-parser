@@ -24,11 +24,11 @@ fn test_snmp_v2_get() {
                 var:vec![
                     SnmpVariable{
                         oid: Oid::from(&[1, 3, 6, 1, 2, 1, 25, 1, 1, 0]),
-                        val: ObjectSyntax::Ticks(970069)
+                        val: ObjectSyntax::TimeTicks(970069)
                     },
                     SnmpVariable{
                         oid: Oid::from(&[1, 3, 6, 1, 2, 1, 25, 1, 5, 0]),
-                        val: ObjectSyntax::Gauge(3)
+                        val: ObjectSyntax::Gauge32(3)
                     },
                     SnmpVariable{
                         oid: Oid::from(&[1, 3, 6, 1, 2, 1, 25, 1, 5, 1]),

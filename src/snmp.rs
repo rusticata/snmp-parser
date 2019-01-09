@@ -4,6 +4,7 @@
 //!   - [RFC1157](https://tools.ietf.org/html/rfc1157): SNMP v1
 //!   - [RFC1442](https://tools.ietf.org/html/rfc1442): Structure of Management Information for version 2 of the Simple Network Management Protocol (SNMPv2)
 //!   - [RFC1902](https://tools.ietf.org/html/rfc1902): SNMP v2 SMI
+//!   - [RFC2578](https://tools.ietf.org/html/rfc2578): Structure of Management Information Version 2 (SMIv2)
 //!   - [RFC3416](https://tools.ietf.org/html/rfc3416): SNMP v2
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
 
@@ -221,12 +222,18 @@ pub enum ObjectSyntax<'a> {
     Number(DerObject<'a>),
     String(&'a[u8]),
     Object(Oid),
+    BitString(u8, BitStringObject<'a>),
     Empty,
-    Address(NetworkAddress),
-    Counter(Counter),
-    Gauge(Gauge),
-    Ticks(TimeTicks),
-    Arbitrary(DerObject<'a>),
+    UnknownSimple(DerObject<'a>),
+    IpAddress(NetworkAddress),
+    Counter32(Counter),
+    Gauge32(Gauge),
+    TimeTicks(TimeTicks),
+    Opaque(&'a[u8]),
+    NsapAddress(&'a[u8]),
+    Counter64(u64),
+    UInteger32(u32),
+    UnknownApplication(u8, &'a[u8]),
 }
 
 pub(crate) fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
@@ -243,7 +250,7 @@ pub(crate) fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
     }
 }
 
-// Defined in RFC1442
+// Defined in RFC1442 and RFC2578
 fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
@@ -256,7 +263,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                             |x:DerObjectContent| {
                                 match x {
                                     DerObjectContent::OctetString(s) if s.len() == 4 => {
-                                        Ok(ObjectSyntax::Address(NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
+                                        Ok(ObjectSyntax::IpAddress(NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
                                     },
                                     _ => Err(DER_TAG_ERROR),
                                 }
@@ -270,9 +277,9 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                             |x:DerObjectContent| {
                                 x.as_u32().map(|x| {
                                     match hdr.tag {
-                                        1 => ObjectSyntax::Counter(x),
-                                        2 => ObjectSyntax::Gauge(x),
-                                        3 => ObjectSyntax::Ticks(x),
+                                        1 => ObjectSyntax::Counter32(x),
+                                        2 => ObjectSyntax::Gauge32(x),
+                                        3 => ObjectSyntax::TimeTicks(x),
                                         _ => unreachable!(),
                                     }
                                 })
@@ -280,10 +287,32 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                         )
                     },
                     4 => {
-                        let r = der_read_element_content_as(rem, DerTag::OctetString as u8, hdr.len as usize);
-                        r.map(|(rem,x)| (rem,ObjectSyntax::Arbitrary(DerObject::from_obj(x))))
+                        map!(rem, take!(hdr.len as usize), ObjectSyntax::Opaque)
                     },
-                    _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR)))),
+                    5 => {
+                        map!(rem, take!(hdr.len as usize), ObjectSyntax::NsapAddress)
+                    },
+                    6 => {
+                        map_res!(
+                            rem,
+                            apply!(der_read_element_content_as, DerTag::Integer as u8, hdr.len as usize),
+                            |x:DerObjectContent| {
+                                x.as_u64().map(ObjectSyntax::Counter64)
+                            }
+                        )
+                    },
+                    7 => {
+                        map_res!(
+                            rem,
+                            apply!(der_read_element_content_as, DerTag::Integer as u8, hdr.len as usize),
+                            |x:DerObjectContent| {
+                                x.as_u32().map(ObjectSyntax::UInteger32)
+                            }
+                        )
+                    },
+                    _ => {
+                        map!(rem, take!(hdr.len as usize), |x| ObjectSyntax::UnknownApplication(hdr.tag,x))
+                    },
                 }
             } else {
                         if hdr.len == 0 { return Ok((rem, ObjectSyntax::Empty)); }
@@ -295,8 +324,9 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                                     DerObjectContent::Integer(_)     => Ok(ObjectSyntax::Number(DerObject::from_obj(x))),
                                     DerObjectContent::OctetString(s) => Ok(ObjectSyntax::String(s)),
                                     DerObjectContent::OID(o)         => Ok(ObjectSyntax::Object(o)),
+                                    DerObjectContent::BitString(a,s) => Ok(ObjectSyntax::BitString(a,s)),
                                     DerObjectContent::Null           => Ok(ObjectSyntax::Empty),
-                                    _                                => Err(DER_TAG_ERROR),
+                                    _                                => Ok(ObjectSyntax::UnknownSimple(DerObject::from_obj(x))) as Result<_,u32>,
                                 }
                             }
                         )
