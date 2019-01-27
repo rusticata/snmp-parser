@@ -7,6 +7,7 @@ extern crate rusticata_macros;
 #[macro_use]
 extern crate der_parser;
 
+mod generic;
 mod usm;
 
 #[macro_use]
@@ -14,5 +15,6 @@ pub mod snmp;
 pub mod snmpv3;
 pub mod error;
 
+pub use generic::*;
 pub use snmp::*;
 pub use snmpv3::*;

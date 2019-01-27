@@ -86,7 +86,7 @@ pub struct ScopedPdu<'a> {
 
 
 
-fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a[u8],ScopedPduData<'a>> {
+pub(crate) fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a[u8],ScopedPduData<'a>> {
     if hdr.is_encrypted()
     {
         map_res!(i,
@@ -98,7 +98,7 @@ fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a[u8],Scoped
     }
 }
 
-fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>,DerError> {
+pub(crate) fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>,DerError> {
     match x.as_slice() {
         Ok(i) => {
             match hdr.msg_security_model {
@@ -138,7 +138,7 @@ pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpErr
     ).map(|(rem,x)| (rem,x.1))
 }
 
-fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8],HeaderData> {
+pub(crate) fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8],HeaderData> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,

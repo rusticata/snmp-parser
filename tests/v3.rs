@@ -28,7 +28,7 @@ fn test_snmp_v3_req() {
         err_index: 0,
         var: vec![]
     });
-    let expected = Ok((empty,SnmpV3Message{
+    let expected = SnmpV3Message{
         version: 3,
         header_data: HeaderData{
             msg_id: 821490644,
@@ -44,10 +44,10 @@ fn test_snmp_v3_req() {
                 data: data,
             }
         ),
-    }));
+    };
     let res = parse_snmp_v3(&bytes);
     // eprintln!("{:?}", res);
-    assert_eq!(res, expected);
+    assert_eq!(res, Ok((empty,expected)));
 }
 
 
@@ -70,7 +70,7 @@ fn test_snmp_v3_req_encrypted() {
 fn test_snmp_v3_report() {
     let bytes = include_bytes!("../assets/snmpv3-report.bin");
     let res = parse_snmp_v3(bytes);
-    eprintln!("{:?}", res);
+    // eprintln!("{:?}", res);
     match res {
         Ok((rem,msg)) => {
             assert!(rem.is_empty());
@@ -78,5 +78,23 @@ fn test_snmp_v3_report() {
             assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
         },
         _ => assert!(false),
+    }
+}
+
+#[test]
+fn test_snmp_v3_generic() {
+    let bytes = SNMPV3_REQ;
+    let res = parse_snmp_generic_message(&bytes);
+    // eprintln!("{:?}", res);
+    match res.expect("parse_snmp_generic_message") {
+        (rem,m) => {
+            assert!(rem.is_empty());
+            if let SnmpGenericMessage::V3(msg) = m {
+                assert_eq!(msg.version, 3);
+                assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
+            } else {
+                assert!(false);
+            }
+        }
     }
 }
