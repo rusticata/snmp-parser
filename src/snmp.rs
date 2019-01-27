@@ -1,4 +1,4 @@
-//! SNMP Parser
+//! SNMP Parser (v1 and v2c)
 //!
 //! SNMP is defined in the following RFCs:
 //!   - [RFC1157](https://tools.ietf.org/html/rfc1157): SNMP v1
@@ -164,8 +164,10 @@ pub enum SnmpPdu<'a> {
     TrapV1(SnmpTrapPdu<'a>),
 }
 
+/// An SNMPv1 or SNMPv2c message
 #[derive(Debug,PartialEq)]
 pub struct SnmpMessage<'a> {
+    /// Version, as raw-encoded: 0 for SNMPv1, 1 for SNMPv2c
     pub version: u32,
     pub community: String,
     pub pdu: SnmpPdu<'a>,
@@ -488,6 +490,27 @@ fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
 ///                 ANY          -- authentication is being used
 ///         }
 /// </pre>
+///
+/// Example:
+///
+/// ```rust
+/// # extern crate nom;
+/// # #[macro_use] extern crate snmp_parser;
+/// use snmp_parser::parse_snmp_v1;
+///
+/// static SNMPV1_REQ: &'static [u8] = include_bytes!("../assets/snmpv1_req.bin");
+///
+/// # fn main() {
+/// match parse_snmp_v1(&SNMPV1_REQ) {
+///   Ok((_, ref r)) => {
+///     assert!(r.version == 0);
+///     assert!(r.community == String::from("public"));
+///     assert!(r.vars_iter().count() == 1);
+///   },
+///   Err(e) => panic!(e),
+/// }
+/// # }
+/// ```
 pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
     parse_der_struct!(
         i,

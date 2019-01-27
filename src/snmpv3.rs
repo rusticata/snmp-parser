@@ -45,8 +45,10 @@ pub enum SecurityParameters<'a> {
     USM(UsmSecurityParameters<'a>)
 }
 
+/// An SNMPv3 message
 #[derive(Debug,PartialEq)]
 pub struct SnmpV3Message<'a> {
+    /// Version, as raw-encoded: 3 for SNMPv3
     pub version: u32,
     pub header_data: HeaderData,
     pub security_params: SecurityParameters<'a>,
@@ -116,6 +118,30 @@ pub(crate) fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<Securi
 }
 
 /// Parse an SNMPv3 top-level message
+///
+/// Example:
+///
+/// ```rust
+/// # extern crate nom;
+/// # #[macro_use] extern crate snmp_parser;
+/// use snmp_parser::{parse_snmp_v3,ScopedPduData,SecurityModel};
+///
+/// static SNMPV3_REQ: &'static [u8] = include_bytes!("../assets/snmpv3_req.bin");
+///
+/// # fn main() {
+/// match parse_snmp_v3(&SNMPV3_REQ) {
+///   Ok((_, ref r)) => {
+///     assert!(r.version == 3);
+///     assert!(r.header_data.msg_security_model == SecurityModel::USM);
+///     match r.data {
+///       ScopedPduData::Plaintext(ref _pdu) => { },
+///       ScopedPduData::Encrypted(_) => (),
+///     }
+///   },
+///   Err(e) => panic!(e),
+/// }
+/// # }
+/// ```
 pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpV3Message<'a>,SnmpError> {
     fix_error!(
         i,
