@@ -1,4 +1,5 @@
-use der_parser::*;
+use der_parser::ber::BerTag;
+use der_parser::der::*;
 use nom::{Err,ErrorKind,IResult};
 use snmp::*;
 use snmpv3::*;
@@ -13,7 +14,7 @@ pub enum SnmpGenericMessage<'a> {
 
 pub fn parse_snmp_generic_message<'a>(i:&'a[u8]) -> IResult<&'a[u8],SnmpGenericMessage> {
     der_read_element_header(i).and_then(|(rem,hdr)| {
-        if hdr.tag != DerTag::Sequence as u8 { return Err(Err::Error(error_position!(i, ErrorKind::Tag))); }
+        if hdr.tag != BerTag::Sequence { return Err(Err::Error(error_position!(i, ErrorKind::Tag))); }
         take!(rem, hdr.len as usize)
     }).and_then(|(rem,data)| {
         parse_der_u32(data).and_then(|(r,version)| {

@@ -12,7 +12,9 @@ use std::{fmt,str};
 use std::net::Ipv4Addr;
 use std::slice::Iter;
 use nom::{IResult,Err,ErrorKind};
-use der_parser::*;
+use der_parser::ber::{BerObjectContent, BerTag, BitStringObject};
+use der_parser::der::*;
+use der_parser::error::*;
 use der_parser::oid::Oid;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -242,10 +244,10 @@ pub(crate) fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
     match parse_der_octetstring(i) {
         Ok((rem,ref obj)) => {
             match obj.content {
-                DerObjectContent::OctetString(s) => {
+                BerObjectContent::OctetString(s) => {
                     Ok((rem, s))
                 }
-                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR)))),
+                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(BER_TAG_ERROR)))),
             }
         }
         Err(e)            => Err(e)
@@ -257,17 +259,17 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
             if hdr.is_application() {
-                match hdr.tag {
+                match hdr.tag.0 {
                     0 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as,DerTag::OctetString as u8, hdr.len as usize),
-                            |x:DerObjectContent| {
+                            apply!(der_read_element_content_as, BerTag::OctetString, hdr.len as usize, hdr.is_constructed(), 0),
+                            |x:BerObjectContent| {
                                 match x {
-                                    DerObjectContent::OctetString(s) if s.len() == 4 => {
+                                    BerObjectContent::OctetString(s) if s.len() == 4 => {
                                         Ok(ObjectSyntax::IpAddress(NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
                                     },
-                                    _ => Err(DER_TAG_ERROR),
+                                    _ => Err(BER_TAG_ERROR),
                                 }
                             }
                         )
@@ -275,10 +277,10 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     1 ... 3 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, DerTag::Integer as u8, hdr.len as usize),
-                            |x:DerObjectContent| {
+                            apply!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
+                            |x:BerObjectContent| {
                                 x.as_u32().map(|x| {
-                                    match hdr.tag {
+                                    match hdr.tag.0 {
                                         1 => ObjectSyntax::Counter32(x),
                                         2 => ObjectSyntax::Gauge32(x),
                                         3 => ObjectSyntax::TimeTicks(x),
@@ -297,8 +299,8 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     6 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, DerTag::Integer as u8, hdr.len as usize),
-                            |x:DerObjectContent| {
+                            apply!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
+                            |x:BerObjectContent| {
                                 x.as_u64().map(ObjectSyntax::Counter64)
                             }
                         )
@@ -306,28 +308,28 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     7 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, DerTag::Integer as u8, hdr.len as usize),
-                            |x:DerObjectContent| {
+                            apply!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
+                            |x:BerObjectContent| {
                                 x.as_u32().map(ObjectSyntax::UInteger32)
                             }
                         )
                     },
                     _ => {
-                        map!(rem, take!(hdr.len as usize), |x| ObjectSyntax::UnknownApplication(hdr.tag,x))
+                        map!(rem, take!(hdr.len as usize), |x| ObjectSyntax::UnknownApplication(hdr.tag.0,x))
                     },
                 }
             } else {
                         if hdr.len == 0 { return Ok((rem, ObjectSyntax::Empty)); }
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, hdr.tag, hdr.len as usize),
-                            |x:DerObjectContent<'a>| {
+                            apply!(der_read_element_content_as, hdr.tag, hdr.len as usize, hdr.is_constructed(), 0),
+                            |x:BerObjectContent<'a>| {
                                 match x {
-                                    DerObjectContent::Integer(_)     => Ok(ObjectSyntax::Number(DerObject::from_obj(x))),
-                                    DerObjectContent::OctetString(s) => Ok(ObjectSyntax::String(s)),
-                                    DerObjectContent::OID(o)         => Ok(ObjectSyntax::Object(o)),
-                                    DerObjectContent::BitString(a,s) => Ok(ObjectSyntax::BitString(a,s)),
-                                    DerObjectContent::Null           => Ok(ObjectSyntax::Empty),
+                                    BerObjectContent::Integer(_)     => Ok(ObjectSyntax::Number(DerObject::from_obj(x))),
+                                    BerObjectContent::OctetString(s) => Ok(ObjectSyntax::String(s)),
+                                    BerObjectContent::OID(o)         => Ok(ObjectSyntax::Object(o)),
+                                    BerObjectContent::BitString(a,s) => Ok(ObjectSyntax::BitString(a,s)),
+                                    BerObjectContent::Null           => Ok(ObjectSyntax::Empty),
                                     _                                => Ok(ObjectSyntax::UnknownSimple(DerObject::from_obj(x))) as Result<_,u32>,
                                 }
                             }
@@ -376,14 +378,14 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
 fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
     match parse_der(i) {
         Ok((rem,obj)) => {
-            if obj.tag != 0 || obj.class != 0b01 {
-                return Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR))));
+            if obj.tag.0 != 0 || obj.class != 0b01 {
+                return Err(Err::Error(error_position!(i, ErrorKind::Custom(BER_TAG_ERROR))));
             }
             match obj.content {
-                DerObjectContent::Unknown(s) if s.len() == 4 => {
+                BerObjectContent::Unknown(_,s) if s.len() == 4 => {
                     Ok((rem, NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
                 },
-                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(DER_TAG_ERROR)))),
+                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(BER_TAG_ERROR)))),
             }
         },
         Err(e)        => Err(e)
@@ -396,13 +398,13 @@ fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
 ///         IMPLICIT INTEGER (0..4294967295)
 /// </pre>
 fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
-    fn der_read_integer_content(i:&[u8], _tag:u8, len: usize) -> IResult<&[u8],DerObjectContent,u32> {
-        der_read_element_content_as(i, DerTag::Integer as u8, len)
+    fn der_read_integer_content(i:&[u8], _tag:BerTag, len: usize) -> IResult<&[u8],BerObjectContent,u32> {
+        der_read_element_content_as(i, BerTag::Integer, len, false, 0)
     }
-    map_res!(i, apply!(parse_der_implicit, 3, der_read_integer_content), |x: DerObject| {
+    map_res!(i, apply!(parse_der_implicit, BerTag(3), der_read_integer_content), |x: DerObject| {
         match x.as_context_specific() {
             Ok((_,Some(x))) => x.as_u32(),
-            _               => Err(DerError::DerTypeError),
+            _               => Err(BerError::BerTypeError),
         }
     })
 }
@@ -535,11 +537,11 @@ pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
 pub(crate) fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
-            match PduType(hdr.tag) {
+            match PduType(hdr.tag.0) {
                 PduType::GetRequest |
                 PduType::GetNextRequest |
                 PduType::Response |
-                PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
+                PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag.0)),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
                 _                       => Err(Err::Error(error_position!(i, ErrorKind::Custom(128)))),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
@@ -595,14 +597,14 @@ pub fn parse_snmp_v2c(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
 pub(crate) fn parse_snmp_v2c_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
-            match PduType(hdr.tag) {
+            match PduType(hdr.tag.0) {
                 PduType::GetRequest |
                 PduType::GetNextRequest |
                 PduType::Response |
                 PduType::SetRequest |
                 PduType::InformRequest |
                 PduType::TrapV2 |
-                PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag)),
+                PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag.0)),
                 PduType::GetBulkRequest => parse_snmp_v1_bulk_pdu(rem),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
                 _                       => Err(Err::Error(error_position!(i, ErrorKind::Custom(128)))),

@@ -10,7 +10,8 @@
 
 use std::fmt;
 
-use der_parser::*;
+use der_parser::der::*;
+use der_parser::error::*;
 use nom::IResult;
 
 use snmp::{SnmpPdu,parse_der_octetstring_as_slice,parse_snmp_v2c_pdu};
@@ -100,20 +101,20 @@ pub(crate) fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a
     }
 }
 
-pub(crate) fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>,DerError> {
+pub(crate) fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>,BerError> {
     match x.as_slice() {
         Ok(i) => {
             match hdr.msg_security_model {
                 SecurityModel::USM => {
                     match parse_usm_security_parameters(i) {
                         Ok((_,usm)) => Ok(SecurityParameters::USM(usm)),
-                        _           => Err(DerError::DerValueError)
+                        _           => Err(BerError::BerValueError)
                     }
                 },
                 _                  => Ok(SecurityParameters::Raw(i))
             }
         },
-        _     => Err(DerError::DerValueError)
+        _     => Err(BerError::BerValueError)
     }
 }
 
@@ -171,7 +172,7 @@ pub(crate) fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8],HeaderData> {
         id: parse_der_u32 >>
         sz: parse_der_u32 >>
         fl: map_res!(parse_der_octetstring, |x: DerObject| x.as_slice().and_then(|s|
-            if s.len() == 1 { Ok(s[0]) } else { Err(DerError::DerValueError) })) >>
+            if s.len() == 1 { Ok(s[0]) } else { Err(BerError::BerValueError) })) >>
         sm: parse_der_u32 >>
         (
             HeaderData{
