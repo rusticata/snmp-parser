@@ -1,8 +1,8 @@
 //! RFC2274 - User-based Security Model (USM) for version 3 of the Simple Network Management Protocol (SNMPv3)
 
+use crate::snmp::parse_der_octetstring_as_slice;
 use der_parser::ber::BerTag;
 use der_parser::der::parse_der_u32;
-use snmp::parse_der_octetstring_as_slice;
 use nom::IResult;
 use std::str;
 

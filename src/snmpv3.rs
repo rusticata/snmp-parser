@@ -14,10 +14,9 @@ use der_parser::der::*;
 use der_parser::error::*;
 use nom::IResult;
 
-use snmp::{SnmpPdu,parse_der_octetstring_as_slice,parse_snmp_v2c_pdu};
-pub use usm::{UsmSecurityParameters,parse_usm_security_parameters};
-
-use error::SnmpError;
+use crate::snmp::{SnmpPdu,parse_der_octetstring_as_slice,parse_snmp_v2c_pdu};
+pub use crate::usm::{UsmSecurityParameters,parse_usm_security_parameters};
+use crate::error::SnmpError;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct SecurityModel(pub u32);

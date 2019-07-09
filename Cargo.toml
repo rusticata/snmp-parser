@@ -9,6 +9,7 @@ homepage = "https://github.com/rusticata/snmp-parser"
 repository = "https://github.com/rusticata/snmp-parser.git"
 categories = ["parser-implementations"]
 readme = "README.md"
+edition = "2018"
 
 include = [
   "LICENSE-*",

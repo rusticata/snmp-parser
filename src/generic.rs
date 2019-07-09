@@ -1,8 +1,8 @@
+use crate::snmp::*;
+use crate::snmpv3::*;
 use der_parser::ber::BerTag;
 use der_parser::der::*;
 use nom::{Err,ErrorKind,IResult};
-use snmp::*;
-use snmpv3::*;
 use std::str;
 
 #[derive(Debug,PartialEq)]
