@@ -18,7 +18,7 @@ use der_parser::error::*;
 use der_parser::oid::Oid;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct PduType(pub u8);
+pub struct PduType(pub u32);
 
 #[allow(non_upper_case_globals)]
 impl PduType {
@@ -237,7 +237,7 @@ pub enum ObjectSyntax<'a> {
     NsapAddress(&'a[u8]),
     Counter64(u64),
     UInteger32(u32),
-    UnknownApplication(u8, &'a[u8]),
+    UnknownApplication(u32, &'a[u8]),
 }
 
 pub(crate) fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {

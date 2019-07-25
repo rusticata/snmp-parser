@@ -1,6 +1,6 @@
 [package]
 name = "snmp-parser"
-version = "0.4.0"
+version = "0.4.1"
 description = "Parser for the SNMP protocol"
 license = "MIT/Apache-2.0"
 keywords = ["SNMP","protocol","parser","nom"]
@@ -25,7 +25,7 @@ include = [
 [dependencies]
 nom = {version = "4.0", features = ["verbose-errors"]}
 rusticata-macros = "1.0"
-der-parser = "2.0"
+der-parser = "2.1"
 
 [dev-dependencies]
 pretty_assertions = "0.5.0"
