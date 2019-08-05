@@ -3,6 +3,7 @@
 use crate::snmp::parse_der_octetstring_as_slice;
 use der_parser::ber::BerTag;
 use der_parser::der::parse_der_u32;
+use der_parser::error::BerError;
 use nom::IResult;
 use std::str;
 
@@ -16,7 +17,7 @@ pub struct UsmSecurityParameters<'a> {
     pub msg_privacy_parameters: &'a[u8],
 }
 
-pub fn parse_usm_security_parameters(i:&[u8]) -> IResult<&[u8],UsmSecurityParameters> {
+pub fn parse_usm_security_parameters(i:&[u8]) -> IResult<&[u8], UsmSecurityParameters, BerError> {
     parse_der_struct!(
         i,
         TAG BerTag::Sequence,

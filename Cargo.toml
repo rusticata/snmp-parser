@@ -23,9 +23,9 @@ include = [
 ]
 
 [dependencies]
-nom = {version = "4.0", features = ["verbose-errors"]}
-rusticata-macros = "1.0"
-der-parser = "2.1"
+nom = "5.0"
+rusticata-macros = "2.0.2"
+der-parser = "3.0"
 
 [dev-dependencies]
-pretty_assertions = "0.5.0"
+pretty_assertions = "0.6.0"

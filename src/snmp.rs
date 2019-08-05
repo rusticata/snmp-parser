@@ -8,10 +8,11 @@
 //!   - [RFC3416](https://tools.ietf.org/html/rfc3416): SNMP v2
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
 
+use crate::error::SnmpError;
 use std::{fmt,str};
 use std::net::Ipv4Addr;
 use std::slice::Iter;
-use nom::{IResult,Err,ErrorKind};
+use nom::{Err, IResult};
 use der_parser::ber::{BerObjectContent, BerTag, BitStringObject};
 use der_parser::der::*;
 use der_parser::error::*;
@@ -240,22 +241,22 @@ pub enum ObjectSyntax<'a> {
     UnknownApplication(u32, &'a[u8]),
 }
 
-pub(crate) fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8],&[u8]> {
+pub(crate) fn parse_der_octetstring_as_slice(i:&[u8]) -> IResult<&[u8], &[u8], BerError> {
     match parse_der_octetstring(i) {
         Ok((rem,ref obj)) => {
             match obj.content {
                 BerObjectContent::OctetString(s) => {
                     Ok((rem, s))
                 }
-                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(BER_TAG_ERROR)))),
+                _ => Err(Err::Error(BerError::InvalidTag)),
             }
         }
-        Err(e)            => Err(e)
+        Err(e) => Err(e)
     }
 }
 
 // Defined in RFC1442 and RFC2578
-fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
+fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8], ObjectSyntax, BerError> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
             if hdr.is_application() {
@@ -263,13 +264,13 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     0 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, BerTag::OctetString, hdr.len as usize, hdr.is_constructed(), 0),
+                            call!(der_read_element_content_as, BerTag::OctetString, hdr.len as usize, hdr.is_constructed(), 0),
                             |x:BerObjectContent| {
                                 match x {
                                     BerObjectContent::OctetString(s) if s.len() == 4 => {
                                         Ok(ObjectSyntax::IpAddress(NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
                                     },
-                                    _ => Err(BER_TAG_ERROR),
+                                    _ => Err(BerError::InvalidTag),
                                 }
                             }
                         )
@@ -277,7 +278,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     1 ... 3 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
+                            call!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
                             |x:BerObjectContent| {
                                 x.as_u32().map(|x| {
                                     match hdr.tag.0 {
@@ -299,7 +300,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     6 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
+                            call!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
                             |x:BerObjectContent| {
                                 x.as_u64().map(ObjectSyntax::Counter64)
                             }
@@ -308,7 +309,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                     7 => {
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
+                            call!(der_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
                             |x:BerObjectContent| {
                                 x.as_u32().map(ObjectSyntax::UInteger32)
                             }
@@ -322,7 +323,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
                         if hdr.len == 0 { return Ok((rem, ObjectSyntax::Empty)); }
                         map_res!(
                             rem,
-                            apply!(der_read_element_content_as, hdr.tag, hdr.len as usize, hdr.is_constructed(), 0),
+                            call!(der_read_element_content_as, hdr.tag, hdr.len as usize, hdr.is_constructed(), 0),
                             |x:BerObjectContent<'a>| {
                                 match x {
                                     BerObjectContent::Integer(_)     => Ok(ObjectSyntax::Number(DerObject::from_obj(x))),
@@ -341,7 +342,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8],ObjectSyntax> {
 }
 
 #[inline]
-fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
+fn parse_varbind(i:&[u8]) -> IResult<&[u8], SnmpVariable, BerError> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,
@@ -355,7 +356,7 @@ fn parse_varbind(i:&[u8]) -> IResult<&[u8],SnmpVariable> {
 }
 
 #[inline]
-fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
+fn parse_varbind_list(i:&[u8]) -> IResult<&[u8], Vec<SnmpVariable>, BerError> {
     parse_der_struct!(
         i,
         TAG DerTag::Sequence,
@@ -375,17 +376,17 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8],Vec<SnmpVariable>> {
 ///     [APPLICATION 0]          -- in network-byte order
 ///         IMPLICIT OCTET STRING (SIZE (4))
 /// </pre>
-fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
+fn parse_networkaddress(i:&[u8]) -> IResult<&[u8], NetworkAddress, BerError> {
     match parse_der(i) {
         Ok((rem,obj)) => {
             if obj.tag.0 != 0 || obj.class != 0b01 {
-                return Err(Err::Error(error_position!(i, ErrorKind::Custom(BER_TAG_ERROR))));
+                return Err(Err::Error(BerError::InvalidTag));
             }
             match obj.content {
                 BerObjectContent::Unknown(_,s) if s.len() == 4 => {
                     Ok((rem, NetworkAddress::IPv4(Ipv4Addr::new(s[0],s[1],s[2],s[3]))))
                 },
-                _ => Err(Err::Error(error_position!(i, ErrorKind::Custom(BER_TAG_ERROR)))),
+                _ => Err(Err::Error(BerError::InvalidTag)),
             }
         },
         Err(e)        => Err(e)
@@ -397,11 +398,11 @@ fn parse_networkaddress(i:&[u8]) -> IResult<&[u8],NetworkAddress> {
 ///     [APPLICATION 3]
 ///         IMPLICIT INTEGER (0..4294967295)
 /// </pre>
-fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
-    fn der_read_integer_content(i:&[u8], _tag:BerTag, len: usize) -> IResult<&[u8],BerObjectContent,u32> {
+fn parse_timeticks(i:&[u8]) -> IResult<&[u8], TimeTicks, BerError> {
+    fn der_read_integer_content(i:&[u8], _tag:BerTag, len: usize) -> IResult<&[u8], BerObjectContent, BerError> {
         der_read_element_content_as(i, BerTag::Integer, len, false, 0)
     }
-    map_res!(i, apply!(parse_der_implicit, BerTag(3), der_read_integer_content), |x: DerObject| {
+    map_res!(i, call!(parse_der_implicit, BerTag(3), der_read_integer_content), |x: DerObject| {
         match x.as_context_specific() {
             Ok((_,Some(x))) => x.as_u32(),
             _               => Err(BerError::BerTypeError),
@@ -412,52 +413,56 @@ fn parse_timeticks(i:&[u8]) -> IResult<&[u8],TimeTicks> {
 
 
 
-fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag:PduType) -> IResult<&[u8],SnmpPdu> {
-    do_parse!(pdu,
-              req_id:       parse_der_u32 >>
-              err:          parse_der_u32 >>
-              err_index:    parse_der_u32 >>
-              var_bindings: parse_varbind_list >>
-              (
-                  SnmpPdu::Generic(
-                      SnmpGenericPdu {
-                          pdu_type:  tag,
-                          req_id,
-                          err:       ErrorStatus(err),
-                          err_index,
-                          var:       var_bindings
-                      }
-                  )
-              ))
+fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag:PduType) -> IResult<&[u8], SnmpPdu, BerError> {
+    do_parse! {
+        pdu,
+        req_id:       parse_der_u32 >>
+        err:          parse_der_u32 >>
+        err_index:    parse_der_u32 >>
+        var_bindings: parse_varbind_list >>
+        (
+            SnmpPdu::Generic(
+                SnmpGenericPdu {
+                    pdu_type:  tag,
+                    req_id,
+                    err:       ErrorStatus(err),
+                    err_index,
+                    var:       var_bindings
+                }
+            )
+        )
+    }
 }
 
-fn parse_snmp_v1_bulk_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
-    do_parse!(pdu,
-              req_id:          parse_der_u32 >>
-              non_repeaters:   parse_der_u32 >>
-              max_repetitions: parse_der_u32 >>
-              var_bindings:    parse_varbind_list >>
-              (
-                  SnmpPdu::Bulk(
-                      SnmpBulkPdu {
-                          req_id,
-                          non_repeaters,
-                          max_repetitions,
-                          var:       var_bindings
-                      }
-                  )
-              ))
+fn parse_snmp_v1_bulk_pdu(pdu: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
+    do_parse! {
+        pdu,
+        req_id:          parse_der_u32 >>
+        non_repeaters:   parse_der_u32 >>
+        max_repetitions: parse_der_u32 >>
+        var_bindings:    parse_varbind_list >>
+        (
+            SnmpPdu::Bulk(
+                SnmpBulkPdu {
+                    req_id,
+                    non_repeaters,
+                    max_repetitions,
+                    var:       var_bindings
+                }
+            )
+        )
+    }
 }
 
-fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
-    do_parse!(
+fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
+    do_parse! {
         pdu,
         enterprise:    map_res!(parse_der_oid, |x: DerObject| x.as_oid_val()) >>
         agent_addr:    parse_networkaddress >>
         generic_trap:  parse_der_u32 >>
         specific_trap: parse_der_u32 >>
         timestamp:     parse_timeticks >>
-        var_bindings:  parse_varbind_list >>
+        var:           parse_varbind_list >>
         (
             SnmpPdu::TrapV1(
                 SnmpTrapPdu {
@@ -466,11 +471,11 @@ fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
                     generic_trap:  TrapType(generic_trap as u8),
                     specific_trap,
                     timestamp,
-                    var:           var_bindings
+                    var,
                 }
             )
         )
-    )
+    }
 }
 
 /// Parse a SNMP v1 message.
@@ -513,28 +518,30 @@ fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8],SnmpPdu> {
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
-    parse_der_struct!(
-        i,
-        TAG DerTag::Sequence,
-        version:   parse_der_u32 >>
-                   error_if!(version != 0, ErrorKind::Tag) >>
-        community: map_res!(
-            parse_der_octetstring_as_slice,
-            |s| str::from_utf8(s)
-        ) >>
-        pdu:       parse_snmp_v1_pdu >>
-        (
-            SnmpMessage{
-                version,
-                community: community.to_string(),
-                pdu
-            }
-        )
-    ).map(|(rem,x)| (rem,x.1))
+pub fn parse_snmp_v1(i:&[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+    upgrade_error! {
+        parse_der_struct!(
+            i,
+            TAG DerTag::Sequence,
+            version:   parse_der_u32 >>
+                       custom_check!(version != 0, BerError::BerValueError) >>
+            community: map_res!(
+                parse_der_octetstring_as_slice,
+                |s| str::from_utf8(s)
+            ) >>
+            pdu:       parse_snmp_v1_pdu >>
+            (
+                SnmpMessage{
+                    version,
+                    community: community.to_string(),
+                    pdu
+                }
+            )
+        ).map(|(rem,x)| (rem,x.1))
+    }
 }
 
-pub(crate) fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
+pub(crate) fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
             match PduType(hdr.tag.0) {
@@ -543,7 +550,7 @@ pub(crate) fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
                 PduType::Response |
                 PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag.0)),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
-                _                       => Err(Err::Error(error_position!(i, ErrorKind::Custom(128)))),
+                _                       => Err(Err::Error(BerError::BerValueError)),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
         },
@@ -573,28 +580,30 @@ pub(crate) fn parse_snmp_v1_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
 ///                 ANY
 ///         }
 /// </pre>
-pub fn parse_snmp_v2c(i:&[u8]) -> IResult<&[u8],SnmpMessage> {
-    parse_der_struct!(
-        i,
-        TAG DerTag::Sequence,
-        version:   parse_der_u32 >>
-                   error_if!(version != 1, ErrorKind::Tag) >>
-        community: map_res!(
-            parse_der_octetstring_as_slice,
-            |s| str::from_utf8(s)
-        ) >>
-        pdu:       parse_snmp_v2c_pdu >>
-        (
-            SnmpMessage{
-                version,
-                community: community.to_string(),
-                pdu
-            }
-        )
-    ).map(|(rem,x)| (rem,x.1))
+pub fn parse_snmp_v2c(i:&[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+    upgrade_error! {
+        parse_der_struct!(
+            i,
+            TAG DerTag::Sequence,
+            version:   parse_der_u32 >>
+                       custom_check!(version != 1, BerError::BerValueError) >>
+            community: map_res!(
+                parse_der_octetstring_as_slice,
+                |s| str::from_utf8(s)
+            ) >>
+            pdu:       parse_snmp_v2c_pdu >>
+            (
+                SnmpMessage{
+                    version,
+                    community: community.to_string(),
+                    pdu
+                }
+            )
+        ).map(|(rem,x)| (rem,x.1))
+    }
 }
 
-pub(crate) fn parse_snmp_v2c_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
+pub(crate) fn parse_snmp_v2c_pdu(i:&[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
     match der_read_element_header(i) {
         Ok((rem,hdr)) => {
             match PduType(hdr.tag.0) {
@@ -607,7 +616,7 @@ pub(crate) fn parse_snmp_v2c_pdu(i:&[u8]) -> IResult<&[u8],SnmpPdu> {
                 PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag.0)),
                 PduType::GetBulkRequest => parse_snmp_v1_bulk_pdu(rem),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
-                _                       => Err(Err::Error(error_position!(i, ErrorKind::Custom(128)))),
+                _                       => Err(Err::Error(BerError::BerValueError)),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
         },

@@ -1,3 +1,7 @@
+use der_parser::error::BerError;
+use nom::error::{ErrorKind, ParseError};
+use std::convert::From;
+
 #[derive(Debug,PartialEq)]
 pub enum SnmpError {
     /// Invalid message: not a DER sequence, or unexpected number of items, etc.
@@ -13,11 +17,21 @@ pub enum SnmpError {
     /// Invalid SNMPv3 scoped PDU
     InvalidScopedPduData,
     /// Nom error
-    NomError(u32)
+    NomError(ErrorKind),
+    BerError(BerError),
 }
 
-impl From<u32> for SnmpError{
-    fn from(e: u32) -> SnmpError {
-        SnmpError::NomError(e)
+impl<I> ParseError<I> for SnmpError {
+    fn from_error_kind(_input: I, kind: ErrorKind) -> Self {
+        SnmpError::NomError(kind)
+    }
+    fn append(_input: I, kind: ErrorKind, _other: Self) -> Self {
+        SnmpError::NomError(kind)
+    }
+}
+
+impl From<BerError> for SnmpError{
+    fn from(e: BerError) -> SnmpError {
+        SnmpError::BerError(e)
     }
 }
