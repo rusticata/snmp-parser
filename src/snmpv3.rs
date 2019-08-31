@@ -10,11 +10,11 @@
 
 use std::fmt;
 
-use der_parser::der::*;
+use der_parser::ber::*;
 use der_parser::error::*;
 use nom::IResult;
 
-use crate::snmp::{SnmpPdu,parse_der_octetstring_as_slice,parse_snmp_v2c_pdu};
+use crate::snmp::{SnmpPdu, parse_ber_octetstring_as_slice, parse_ber_u32, parse_snmp_v2c_pdu};
 pub use crate::usm::{UsmSecurityParameters,parse_usm_security_parameters};
 use crate::error::SnmpError;
 
@@ -92,15 +92,15 @@ pub(crate) fn parse_snmp_v3_data<'a>(i:&'a[u8], hdr: &HeaderData) -> IResult<&'a
     if hdr.is_encrypted()
     {
         map_res!(i,
-                 parse_der_octetstring,
-                 |x: DerObject<'a>| x.as_slice().map(|x| ScopedPduData::Encrypted(x))
+                 parse_ber_octetstring,
+                 |x: BerObject<'a>| x.as_slice().map(|x| ScopedPduData::Encrypted(x))
         )
     } else {
         parse_snmp_v3_plaintext_pdu(i)
     }
 }
 
-pub(crate) fn parse_secp<'a>(x:&DerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>, BerError> {
+pub(crate) fn parse_secp<'a>(x:&BerObject<'a>, hdr:&HeaderData) -> Result<SecurityParameters<'a>, BerError> {
     match x.as_slice() {
         Ok(i) => {
             match hdr.msg_security_model {
@@ -146,10 +146,10 @@ pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8], SnmpV3Message<'a>, SnmpE
     upgrade_error! {
         parse_der_struct!(
             i,
-            TAG DerTag::Sequence,
-            vers: parse_der_u32 >>
+            TAG BerTag::Sequence,
+            vers: parse_ber_u32 >>
             hdr:  parse_snmp_v3_headerdata >>
-            secp: map_res!(parse_der_octetstring, |x: DerObject<'a>| parse_secp(&x,&hdr)) >>
+            secp: map_res!(parse_ber_octetstring, |x: BerObject<'a>| parse_secp(&x,&hdr)) >>
             data: call!(parse_snmp_v3_data,&hdr) >>
             ({
                 SnmpV3Message{
@@ -167,12 +167,12 @@ pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8], SnmpV3Message<'a>, SnmpE
 pub(crate) fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8], HeaderData, BerError> {
     parse_der_struct!(
         i,
-        TAG DerTag::Sequence,
-        id: parse_der_u32 >>
-        sz: parse_der_u32 >>
-        fl: map_res!(parse_der_octetstring, |x: DerObject| x.as_slice().and_then(|s|
+        TAG BerTag::Sequence,
+        id: parse_ber_u32 >>
+        sz: parse_ber_u32 >>
+        fl: map_res!(parse_ber_octetstring, |x: BerObject| x.as_slice().and_then(|s|
             if s.len() == 1 { Ok(s[0]) } else { Err(BerError::BerValueError) })) >>
-        sm: parse_der_u32 >>
+        sm: parse_ber_u32 >>
         (
             HeaderData{
                 msg_id: id,
@@ -187,8 +187,8 @@ pub(crate) fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8], HeaderData, Be
 fn parse_snmp_v3_plaintext_pdu(i:&[u8]) -> IResult<&[u8], ScopedPduData, BerError> {
     parse_der_struct!(
         i,
-        ctx_eng_id: parse_der_octetstring_as_slice >>
-        ctx_name:   parse_der_octetstring_as_slice >>
+        ctx_eng_id: parse_ber_octetstring_as_slice >>
+        ctx_name:   parse_ber_octetstring_as_slice >>
         data:       parse_snmp_v2c_pdu >>
         (
             ScopedPduData::Plaintext(ScopedPdu{
