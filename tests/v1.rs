@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate hex_literal;
 extern crate der_parser;
 extern crate snmp_parser;
 extern crate nom;
@@ -5,6 +7,30 @@ extern crate nom;
 use std::net::Ipv4Addr;
 use snmp_parser::*;
 use der_parser::oid::Oid;
+
+const SNMPV1_RESPONSE: &[u8] = &hex!("
+30 82 00 59 02 01 00 04 06 70 75 62 6c 69 63 a2
+82 00 4a 02 02 26 72 02 01 00 02 01 00 30 82 00
+3c 30 82 00 10 06 0b 2b 06 01 02 01 19 03 02 01
+05 01 02 01 03 30 82 00 10 06 0b 2b 06 01 02 01
+19 03 05 01 01 01 02 01 03 30 82 00 10 06 0b 2b
+06 01 02 01 19 03 05 01 02 01 04 01 a0
+");
+
+#[test]
+fn test_snmp_v1_response() {
+    let bytes: &[u8] = SNMPV1_RESPONSE;
+    match parse_snmp_v1(bytes) {
+        Ok((rem,pdu)) => {
+            // println!("pdu: {:?}", pdu);
+            assert!(rem.is_empty());
+            assert_eq!(pdu.version, 0);
+            assert_eq!(&pdu.community as &str, "public");
+            assert_eq!(pdu.pdu_type(), PduType::Response);
+        },
+        e => panic!("Error: {:?}",e),
+    }
+}
 
 static SNMPV1_REQ: &'static [u8] = include_bytes!("../assets/snmpv1_req.bin");
 
