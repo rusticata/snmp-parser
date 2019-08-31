@@ -27,6 +27,16 @@ and is part of the [Rusticata](https://github.com/rusticata) project.
 
 <!-- cargo-sync-readme end -->
 
+## Changes
+
+### 0.5.1
+
+- Fix parsing: use BER parsing so DER constraints are not applied
+
+### 0.5.0
+
+- Upgrade to nom 5 and der-parser 3
+
 ## License
 
 Licensed under either of
