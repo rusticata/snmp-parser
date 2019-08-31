@@ -279,7 +279,7 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8], ObjectSyntax, BerError>
                             }
                         )
                     },
-                    1 ... 3 => {
+                    1 ..= 3 => {
                         map_res!(
                             rem,
                             call!(ber_read_element_content_as, BerTag::Integer, hdr.len as usize, hdr.is_constructed(), 0),
