@@ -14,7 +14,7 @@ use der_parser::ber::*;
 use der_parser::error::*;
 use nom::IResult;
 
-use crate::snmp::{SnmpPdu, parse_ber_octetstring_as_slice, parse_ber_u32, parse_snmp_v2c_pdu};
+use crate::snmp::{SnmpPdu, parse_ber_octetstring_as_slice, parse_snmp_v2c_pdu};
 pub use crate::usm::{UsmSecurityParameters,parse_usm_security_parameters};
 use crate::error::SnmpError;
 

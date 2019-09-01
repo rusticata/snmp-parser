@@ -13,7 +13,6 @@ use std::{fmt,str};
 use std::net::Ipv4Addr;
 use std::slice::Iter;
 use nom::{Err, IResult};
-use nom::combinator::map_res;
 use der_parser::ber::*;
 use der_parser::error::*;
 use der_parser::oid::Oid;
@@ -239,10 +238,6 @@ pub enum ObjectSyntax<'a> {
     Counter64(u64),
     UInteger32(u32),
     UnknownApplication(u32, &'a[u8]),
-}
-
-pub(crate) fn parse_ber_u32(i:&[u8]) -> BerResult<u32> {
-    map_res(parse_ber_integer, |o| o.as_u32())(i)
 }
 
 pub(crate) fn parse_ber_octetstring_as_slice(i:&[u8]) -> IResult<&[u8], &[u8], BerError> {
