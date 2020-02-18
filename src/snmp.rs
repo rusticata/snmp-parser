@@ -151,7 +151,7 @@ pub struct SnmpBulkPdu<'a> {
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpTrapPdu<'a> {
-    pub enterprise: Oid,
+    pub enterprise: Oid<'a>,
     pub agent_addr: NetworkAddress,
     pub generic_trap: TrapType,
     pub specific_trap: u32,
@@ -217,7 +217,7 @@ impl<'a> SnmpMessage<'a> {
 
 #[derive(Debug,PartialEq)]
 pub struct SnmpVariable<'a> {
-    pub oid: Oid,
+    pub oid: Oid<'a>,
     pub val: ObjectSyntax<'a>
 }
 
@@ -225,7 +225,7 @@ pub struct SnmpVariable<'a> {
 pub enum ObjectSyntax<'a> {
     Number(BerObject<'a>),
     String(&'a[u8]),
-    Object(Oid),
+    Object(Oid<'a>),
     BitString(u8, BitStringObject<'a>),
     Empty,
     UnknownSimple(BerObject<'a>),
@@ -341,11 +341,11 @@ fn parse_objectsyntax<'a>(i:&'a[u8]) -> IResult<&'a[u8], ObjectSyntax, BerError>
 }
 
 #[inline]
-fn parse_varbind(i:&[u8]) -> IResult<&[u8], SnmpVariable, BerError> {
+fn parse_varbind<'a>(i:&'a [u8]) -> IResult<&'a [u8], SnmpVariable, BerError> {
     parse_der_struct!(
         i,
         TAG BerTag::Sequence,
-        oid: map_res!(parse_ber_oid, |x:BerObject| x.as_oid_val()) >>
+        oid: map_res!(parse_ber_oid, |x:BerObject<'a>| x.as_oid_val()) >>
         val: parse_objectsyntax >>
              // eof!() >>
         (
@@ -453,10 +453,10 @@ fn parse_snmp_v1_bulk_pdu(pdu: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
     }
 }
 
-fn parse_snmp_v1_trap_pdu(pdu: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
+fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerError> {
     do_parse! {
         pdu,
-        enterprise:    map_res!(parse_ber_oid, |x: BerObject| x.as_oid_val()) >>
+        enterprise:    map_res!(parse_ber_oid, |x: BerObject<'a>| x.as_oid_val()) >>
         agent_addr:    parse_networkaddress >>
         generic_trap:  parse_ber_u32 >>
         specific_trap: parse_ber_u32 >>
