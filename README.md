@@ -29,6 +29,10 @@ and is part of the [Rusticata](https://github.com/rusticata) project.
 
 ## Changes
 
+### 0.6.0
+
+- Upgrade to der-parser 4
+
 ### 0.5.2
 
 - Use `parse_ber_u32` from der-parser crate
