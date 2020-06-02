@@ -378,7 +378,7 @@ fn parse_varbind_list(i:&[u8]) -> IResult<&[u8], Vec<SnmpVariable>, BerError> {
 fn parse_networkaddress(i:&[u8]) -> IResult<&[u8], NetworkAddress, BerError> {
     match parse_ber(i) {
         Ok((rem,obj)) => {
-            if obj.tag.0 != 0 || obj.class != 0b01 {
+            if obj.header.tag != BerTag::EndOfContent || obj.header.class != BerClass::Application {
                 return Err(Err::Error(BerError::InvalidTag));
             }
             match obj.content {
