@@ -23,7 +23,20 @@
 
 #![deny(/*missing_docs,*/unsafe_code,
         unstable_features,
-        /*unused_import_braces,*/ unused_qualifications)]
+        unused_import_braces, unused_qualifications)]
+#![warn(
+    missing_debug_implementations,
+    /* missing_docs,
+    rust_2018_idioms,*/
+    unreachable_pub
+)]
+#![forbid(unsafe_code)]
+#![deny(broken_intra_doc_links)]
+#![doc(test(
+    no_crate_inject,
+    attr(deny(warnings, rust_2018_idioms), allow(dead_code, unused_variables))
+))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod generic;
 mod usm;
