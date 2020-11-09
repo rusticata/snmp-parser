@@ -2,22 +2,23 @@ use der_parser::error::BerError;
 use nom::error::{ErrorKind, ParseError};
 use std::convert::From;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum SnmpError {
-    /// Invalid message: not a DER sequence, or unexpected number of items, etc.
+    #[error("Invalid message: not a DER sequence, or unexpected number of items, etc.")]
     InvalidMessage,
-    /// Invalid version: not a number, or not in supported range (1, 2 or 3)
+    #[error("Invalid version: not a number, or not in supported range (1, 2 or 3)")]
     InvalidVersion,
-    /// Unknown or invalid PDU type
+    #[error("Unknown or invalid PDU type")]
     InvalidPduType,
-    /// Invalid PDU: content does not match type, or content cannot be decoded
+    #[error("Invalid PDU: content does not match type, or content cannot be decoded")]
     InvalidPdu,
-    /// Invalid SNMPv3 header data
+    #[error("Invalid SNMPv3 header data")]
     InvalidHeaderData,
-    /// Invalid SNMPv3 scoped PDU
+    #[error("Invalid SNMPv3 scoped PDU")]
     InvalidScopedPduData,
-    /// Nom error
+    #[error("Nom error")]
     NomError(ErrorKind),
+    #[error("BER error")]
     BerError(BerError),
 }
 
