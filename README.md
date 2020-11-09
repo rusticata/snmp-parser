@@ -26,6 +26,10 @@ and is part of the [Rusticata](https://github.com/rusticata) project.
 
 ## Changes
 
+### 0.7.0
+
+- Upgrade to nom 6 / der-parser 5
+
 ### 0.6.0
 
 - Upgrade to der-parser 4
