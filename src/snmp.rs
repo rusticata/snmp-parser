@@ -352,7 +352,6 @@ fn parse_objectsyntax<'a>(i: &'a [u8]) -> IResult<&'a [u8], ObjectSyntax, BerErr
     }
 }
 
-#[inline]
 fn parse_varbind<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpVariable, BerError> {
     parse_ber_sequence_defined_g(|_, i| {
         let (i, oid) = map_res(parse_ber_oid, |x| x.as_oid_val())(i)?;
@@ -361,7 +360,6 @@ fn parse_varbind<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpVariable, BerError> {
     })(i)
 }
 
-#[inline]
 fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable>, BerError> {
     parse_ber_sequence_of_v(parse_varbind)(i)
 }
@@ -426,48 +424,36 @@ fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu
     Ok((i, pdu))
 }
 
-fn parse_snmp_v1_bulk_pdu(pdu: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
-    do_parse! {
-        pdu,
-        req_id:          parse_ber_u32 >>
-        non_repeaters:   parse_ber_u32 >>
-        max_repetitions: parse_ber_u32 >>
-        var_bindings:    parse_varbind_list >>
-        (
-            SnmpPdu::Bulk(
-                SnmpBulkPdu {
-                    req_id,
-                    non_repeaters,
-                    max_repetitions,
-                    var:       var_bindings
-                }
-            )
-        )
-    }
+fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
+    let (i, req_id) = parse_ber_u32(i)?;
+    let (i, non_repeaters) = parse_ber_u32(i)?;
+    let (i, max_repetitions) = parse_ber_u32(i)?;
+    let (i, var) = parse_varbind_list(i)?;
+    let pdu = SnmpBulkPdu {
+        req_id,
+        non_repeaters,
+        max_repetitions,
+        var,
+    };
+    Ok((i, SnmpPdu::Bulk(pdu)))
 }
 
-fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerError> {
-    do_parse! {
-        pdu,
-        enterprise:    map_res!(parse_ber_oid, |x: BerObject<'a>| x.as_oid_val()) >>
-        agent_addr:    dbg_dmp!(parse_networkaddress) >>
-        generic_trap:  parse_ber_u32 >>
-        specific_trap: parse_ber_u32 >>
-        timestamp:     dbg_dmp!(parse_timeticks) >>
-        var:           dbg_dmp!(parse_varbind_list) >>
-        (
-            SnmpPdu::TrapV1(
-                SnmpTrapPdu {
-                    enterprise,
-                    agent_addr,
-                    generic_trap:  TrapType(generic_trap as u8),
-                    specific_trap,
-                    timestamp,
-                    var,
-                }
-            )
-        )
-    }
+fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerError> {
+    let (i, enterprise) = map_res(parse_ber_oid, |x| x.as_oid_val())(i)?;
+    let (i, agent_addr) = parse_networkaddress(i)?;
+    let (i, generic_trap) = parse_ber_u32(i)?;
+    let (i, specific_trap) = parse_ber_u32(i)?;
+    let (i, timestamp) = parse_timeticks(i)?;
+    let (i, var) = parse_varbind_list(i)?;
+    let pdu = SnmpTrapPdu {
+        enterprise,
+        agent_addr,
+        generic_trap: TrapType(generic_trap as u8),
+        specific_trap,
+        timestamp,
+        var,
+    };
+    Ok((i, SnmpPdu::TrapV1(pdu)))
 }
 
 /// Parse a SNMP v1 message.
@@ -493,11 +479,9 @@ fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerEr
 /// Example:
 ///
 /// ```rust
-/// # extern crate nom;
-/// # #[macro_use] extern crate snmp_parser;
 /// use snmp_parser::parse_snmp_v1;
 ///
-/// static SNMPV1_REQ: &'static [u8] = include_bytes!("../assets/snmpv1_req.bin");
+/// static SNMPV1_REQ: &[u8] = include_bytes!("../assets/snmpv1_req.bin");
 ///
 /// # fn main() {
 /// match parse_snmp_v1(&SNMPV1_REQ) {
@@ -511,26 +495,21 @@ fn parse_snmp_v1_trap_pdu<'a>(pdu: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerEr
 /// # }
 /// ```
 pub fn parse_snmp_v1(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
-    upgrade_error! {
-        parse_der_struct!(
-            i,
-            TAG BerTag::Sequence,
-            version:   map_res!(parse_ber_integer, |o:BerObject| o.as_u32()) >>
-                       custom_check!(version != 0, BerError::BerValueError) >>
-            community: map_res!(
-                parse_ber_octetstring_as_slice,
-                |s| str::from_utf8(s)
-            ) >>
-            pdu:       parse_snmp_v1_pdu >>
-            (
-                SnmpMessage{
-                    version,
-                    community: community.to_string(),
-                    pdu
-                }
-            )
-        )
-    }
+    parse_ber_sequence_defined_g(|_, i| {
+        let (i, version) = parse_ber_u32(i)?;
+        if version != 0 {
+            return Err(Err::Error(BerError::BerValueError));
+        }
+        let (i, community) = map_res(parse_ber_octetstring_as_slice, str::from_utf8)(i)?;
+        let (i, pdu) = parse_snmp_v1_pdu(i)?;
+        let msg = SnmpMessage {
+            version,
+            community: community.to_string(),
+            pdu,
+        };
+        Ok((i, msg))
+    })(i)
+    .map_err(Err::convert)
 }
 
 pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
@@ -573,26 +552,21 @@ pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
 ///         }
 /// </pre>
 pub fn parse_snmp_v2c(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
-    upgrade_error! {
-        parse_der_struct!(
-            i,
-            TAG BerTag::Sequence,
-            version:   parse_ber_u32 >>
-                       custom_check!(version != 1, BerError::BerValueError) >>
-            community: map_res!(
-                parse_ber_octetstring_as_slice,
-                |s| str::from_utf8(s)
-            ) >>
-            pdu:       parse_snmp_v2c_pdu >>
-            (
-                SnmpMessage{
-                    version,
-                    community: community.to_string(),
-                    pdu
-                }
-            )
-        )
-    }
+    parse_ber_sequence_defined_g(|_, i| {
+        let (i, version) = parse_ber_u32(i)?;
+        if version != 1 {
+            return Err(Err::Error(BerError::BerValueError));
+        }
+        let (i, community) = map_res(parse_ber_octetstring_as_slice, str::from_utf8)(i)?;
+        let (i, pdu) = parse_snmp_v2c_pdu(i)?;
+        let msg = SnmpMessage {
+            version,
+            community: community.to_string(),
+            pdu,
+        };
+        Ok((i, msg))
+    })(i)
+    .map_err(Err::convert)
 }
 
 pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {

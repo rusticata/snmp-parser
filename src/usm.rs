@@ -1,8 +1,9 @@
 //! RFC2274 - User-based Security Model (USM) for version 3 of the Simple Network Management Protocol (SNMPv3)
 
 use crate::snmp::parse_ber_octetstring_as_slice;
-use der_parser::ber::{parse_ber_u32, BerTag};
+use der_parser::ber::*;
 use der_parser::error::BerError;
+use nom::combinator::map_res;
 use nom::IResult;
 use std::str;
 
@@ -17,27 +18,21 @@ pub struct UsmSecurityParameters<'a> {
 }
 
 pub fn parse_usm_security_parameters(i: &[u8]) -> IResult<&[u8], UsmSecurityParameters, BerError> {
-    parse_der_struct!(
-        i,
-        TAG BerTag::Sequence,
-        eng_id: parse_ber_octetstring_as_slice >>
-        eng_b:  parse_ber_u32 >>
-        eng_t:  parse_ber_u32 >>
-        user:   map_res!(
-                    parse_ber_octetstring_as_slice,
-                    str::from_utf8
-                ) >>
-        auth_p: parse_ber_octetstring_as_slice >>
-        priv_p: parse_ber_octetstring_as_slice >>
-        (
-            UsmSecurityParameters{
-                msg_authoritative_engine_id: eng_id,
-                msg_authoritative_engine_boots: eng_b,
-                msg_authoritative_engine_time: eng_t,
-                msg_user_name: user.to_string(),
-                msg_authentication_parameters: auth_p,
-                msg_privacy_parameters: priv_p,
-            }
-        )
-    )
+    parse_ber_sequence_defined_g(|_, i| {
+        let (i, msg_authoritative_engine_id) = parse_ber_octetstring_as_slice(i)?;
+        let (i, msg_authoritative_engine_boots) = parse_ber_u32(i)?;
+        let (i, msg_authoritative_engine_time) = parse_ber_u32(i)?;
+        let (i, msg_user_name) = map_res(parse_ber_octetstring_as_slice, str::from_utf8)(i)?;
+        let (i, msg_authentication_parameters) = parse_ber_octetstring_as_slice(i)?;
+        let (i, msg_privacy_parameters) = parse_ber_octetstring_as_slice(i)?;
+        let usm = UsmSecurityParameters {
+            msg_authoritative_engine_id,
+            msg_authoritative_engine_boots,
+            msg_authoritative_engine_time,
+            msg_user_name: msg_user_name.to_string(),
+            msg_authentication_parameters,
+            msg_privacy_parameters,
+        };
+        Ok((i, usm))
+    })(i)
 }

@@ -12,7 +12,8 @@ use std::fmt;
 
 use der_parser::ber::*;
 use der_parser::error::*;
-use nom::IResult;
+use nom::combinator::{map, map_res};
+use nom::{Err, IResult};
 
 use crate::error::SnmpError;
 use crate::snmp::{parse_ber_octetstring_as_slice, parse_snmp_v2c_pdu, SnmpPdu};
@@ -96,9 +97,9 @@ pub(crate) fn parse_snmp_v3_data<'a>(
     hdr: &HeaderData,
 ) -> IResult<&'a [u8], ScopedPduData<'a>, BerError> {
     if hdr.is_encrypted() {
-        map_res!(i, parse_ber_octetstring, |x: BerObject<'a>| x
-            .as_slice()
-            .map(|x| ScopedPduData::Encrypted(x)))
+        map_res(parse_ber_octetstring, |x| {
+            x.as_slice().map(ScopedPduData::Encrypted)
+        })(i)
     } else {
         parse_snmp_v3_plaintext_pdu(i)
     }
@@ -125,11 +126,9 @@ pub(crate) fn parse_secp<'a>(
 /// Example:
 ///
 /// ```rust
-/// # extern crate nom;
-/// # #[macro_use] extern crate snmp_parser;
 /// use snmp_parser::{parse_snmp_v3,ScopedPduData,SecurityModel};
 ///
-/// static SNMPV3_REQ: &'static [u8] = include_bytes!("../assets/snmpv3_req.bin");
+/// static SNMPV3_REQ: &[u8] = include_bytes!("../assets/snmpv3_req.bin");
 ///
 /// # fn main() {
 /// match parse_snmp_v3(&SNMPV3_REQ) {
@@ -146,56 +145,54 @@ pub(crate) fn parse_secp<'a>(
 /// # }
 /// ```
 pub fn parse_snmp_v3<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpV3Message<'a>, SnmpError> {
-    upgrade_error! {
-        parse_der_struct!(
-            i,
-            TAG BerTag::Sequence,
-            vers: parse_ber_u32 >>
-            hdr:  parse_snmp_v3_headerdata >>
-            secp: map_res!(parse_ber_octetstring, |x: BerObject<'a>| parse_secp(&x,&hdr)) >>
-            data: call!(parse_snmp_v3_data,&hdr) >>
-            ({
-                SnmpV3Message{
-                    version: vers,
-                    header_data: hdr,
-                    security_params: secp,
-                    data
-                }
-            })
-        )
-    }
+    parse_ber_sequence_defined_g(|_, i| {
+        let (i, version) = parse_ber_u32(i)?;
+        let (i, header_data) = parse_snmp_v3_headerdata(i)?;
+        let (i, secp) = map_res(parse_ber_octetstring, |x| parse_secp(&x, &header_data))(i)?;
+        let (i, data) = parse_snmp_v3_data(i, &header_data)?;
+        let msg = SnmpV3Message {
+            version,
+            header_data,
+            security_params: secp,
+            data,
+        };
+        Ok((i, msg))
+    })(i)
+    .map_err(Err::convert)
 }
 
 pub(crate) fn parse_snmp_v3_headerdata(i: &[u8]) -> IResult<&[u8], HeaderData, BerError> {
-    parse_der_struct!(
-        i,
-        TAG BerTag::Sequence,
-        id: parse_ber_u32 >>
-        sz: parse_ber_u32 >>
-        fl: map_res!(parse_ber_octetstring, |x: BerObject| x.as_slice().and_then(|s|
-            if s.len() == 1 { Ok(s[0]) } else { Err(BerError::BerValueError) })) >>
-        sm: parse_ber_u32 >>
-        (
-            HeaderData{
-                msg_id: id,
-                msg_max_size: sz,
-                msg_flags: fl,
-                msg_security_model: SecurityModel(sm),
+    parse_ber_sequence_defined_g(|_, i| {
+        let (i, msg_id) = parse_ber_u32(i)?;
+        let (i, msg_max_size) = parse_ber_u32(i)?;
+        let (i, msg_flags) = map_res(parse_ber_octetstring_as_slice, |s| {
+            if s.len() == 1 {
+                Ok(s[0])
+            } else {
+                Err(BerError::BerValueError)
             }
-        )
-    )
+        })(i)?;
+        let (i, msg_security_model) = map(parse_ber_u32, SecurityModel)(i)?;
+        let hdr = HeaderData {
+            msg_id,
+            msg_max_size,
+            msg_flags,
+            msg_security_model,
+        };
+        Ok((i, hdr))
+    })(i)
 }
 
 fn parse_snmp_v3_plaintext_pdu(i: &[u8]) -> IResult<&[u8], ScopedPduData, BerError> {
-    parse_der_struct!(
-        i,
-        ctx_eng_id: parse_ber_octetstring_as_slice
-            >> ctx_name: parse_ber_octetstring_as_slice
-            >> data: parse_snmp_v2c_pdu
-            >> (ScopedPduData::Plaintext(ScopedPdu {
-                ctx_engine_id: ctx_eng_id,
-                ctx_engine_name: ctx_name,
-                data
-            }))
-    )
+    parse_ber_sequence_defined_g(|_, i| {
+        let (i, ctx_engine_id) = parse_ber_octetstring_as_slice(i)?;
+        let (i, ctx_engine_name) = parse_ber_octetstring_as_slice(i)?;
+        let (i, data) = parse_snmp_v2c_pdu(i)?;
+        let pdu = ScopedPdu {
+            ctx_engine_id,
+            ctx_engine_name,
+            data,
+        };
+        Ok((i, ScopedPduData::Plaintext(pdu)))
+    })(i)
 }
