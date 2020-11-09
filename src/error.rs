@@ -2,7 +2,7 @@ use der_parser::error::BerError;
 use nom::error::{ErrorKind, ParseError};
 use std::convert::From;
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum SnmpError {
     /// Invalid message: not a DER sequence, or unexpected number of items, etc.
     InvalidMessage,
@@ -30,7 +30,7 @@ impl<I> ParseError<I> for SnmpError {
     }
 }
 
-impl From<BerError> for SnmpError{
+impl From<BerError> for SnmpError {
     fn from(e: BerError) -> SnmpError {
         SnmpError::BerError(e)
     }

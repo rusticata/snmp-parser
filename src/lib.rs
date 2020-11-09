@@ -34,8 +34,8 @@ mod usm;
 
 #[macro_use]
 pub mod snmp;
-pub mod snmpv3;
 pub mod error;
+pub mod snmpv3;
 
 pub use generic::*;
 pub use snmp::*;

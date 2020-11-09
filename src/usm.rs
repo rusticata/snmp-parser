@@ -1,6 +1,6 @@
 //! RFC2274 - User-based Security Model (USM) for version 3 of the Simple Network Management Protocol (SNMPv3)
 
-use crate::snmp::{parse_ber_octetstring_as_slice};
+use crate::snmp::parse_ber_octetstring_as_slice;
 use der_parser::ber::{parse_ber_u32, BerTag};
 use der_parser::error::BerError;
 use nom::IResult;
@@ -8,15 +8,15 @@ use std::str;
 
 #[derive(Debug, PartialEq)]
 pub struct UsmSecurityParameters<'a> {
-    pub msg_authoritative_engine_id: &'a[u8],
+    pub msg_authoritative_engine_id: &'a [u8],
     pub msg_authoritative_engine_boots: u32,
     pub msg_authoritative_engine_time: u32,
     pub msg_user_name: String,
-    pub msg_authentication_parameters: &'a[u8],
-    pub msg_privacy_parameters: &'a[u8],
+    pub msg_authentication_parameters: &'a [u8],
+    pub msg_privacy_parameters: &'a [u8],
 }
 
-pub fn parse_usm_security_parameters(i:&[u8]) -> IResult<&[u8], UsmSecurityParameters, BerError> {
+pub fn parse_usm_security_parameters(i: &[u8]) -> IResult<&[u8], UsmSecurityParameters, BerError> {
     parse_der_struct!(
         i,
         TAG BerTag::Sequence,
