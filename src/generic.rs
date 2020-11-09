@@ -2,6 +2,7 @@ use crate::error::SnmpError;
 use crate::snmp::*;
 use crate::snmpv3::*;
 use der_parser::ber::*;
+use der_parser::error::*;
 use nom::{Err, IResult};
 use std::str;
 
@@ -19,7 +20,10 @@ pub fn parse_snmp_generic_message<'a>(
     if hdr.tag != BerTag::Sequence {
         return Err(Err::Error(SnmpError::InvalidMessage));
     }
-    let (rem, data) = take!(rem, hdr.len as usize)?;
+    let len = hdr.len.primitive()
+        .map_err(|_| SnmpError::BerError(BerError::InvalidLength))
+        ?;
+    let (rem, data) = take!(rem, len)?;
     let (r, version) = upgrade_error!(parse_ber_u32(data))?;
     match version {
         0 => upgrade_error!(do_parse! {

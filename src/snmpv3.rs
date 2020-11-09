@@ -160,7 +160,6 @@ pub fn parse_snmp_v3<'a>(i:&'a[u8]) -> IResult<&'a[u8], SnmpV3Message<'a>, SnmpE
                 }
             })
         )
-        .map(|(rem,x)| (rem,x.1))
     }
 }
 
@@ -181,7 +180,7 @@ pub(crate) fn parse_snmp_v3_headerdata(i:&[u8]) -> IResult<&[u8], HeaderData, Be
                 msg_security_model: SecurityModel(sm),
             }
         )
-    ).map(|(rem,x)| (rem,x.1))
+    )
 }
 
 fn parse_snmp_v3_plaintext_pdu(i:&[u8]) -> IResult<&[u8], ScopedPduData, BerError> {
@@ -197,5 +196,5 @@ fn parse_snmp_v3_plaintext_pdu(i:&[u8]) -> IResult<&[u8], ScopedPduData, BerErro
                 data
             })
         )
-    ).map(|(rem,x)| (rem,x.1))
+    )
 }

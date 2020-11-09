@@ -35,3 +35,9 @@ impl From<BerError> for SnmpError{
         SnmpError::BerError(e)
     }
 }
+
+impl From<SnmpError> for nom::Err<SnmpError> {
+    fn from(e: SnmpError) -> nom::Err<SnmpError> {
+        nom::Err::Error(e)
+    }
+}

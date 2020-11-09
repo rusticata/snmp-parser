@@ -23,10 +23,10 @@ include = [
 ]
 
 [dependencies]
-nom = "5.0"
-rusticata-macros = "2.0.2"
-der-parser = "4.0.0"
+nom = "6.0"
+rusticata-macros = "3.0"
+der-parser = "5.0.0-beta1"
 
 [dev-dependencies]
-hex-literal = "0.2"
+hex-literal = "0.3"
 pretty_assertions = "0.6.0"
