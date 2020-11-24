@@ -18,7 +18,7 @@ pub struct UsmSecurityParameters<'a> {
 }
 
 pub fn parse_usm_security_parameters(i: &[u8]) -> IResult<&[u8], UsmSecurityParameters, BerError> {
-    parse_ber_sequence_defined_g(|_, i| {
+    parse_ber_sequence_defined_g(|i, _| {
         let (i, msg_authoritative_engine_id) = parse_ber_octetstring_as_slice(i)?;
         let (i, msg_authoritative_engine_boots) = parse_ber_u32(i)?;
         let (i, msg_authoritative_engine_time) = parse_ber_u32(i)?;

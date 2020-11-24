@@ -145,7 +145,7 @@ pub(crate) fn parse_secp<'a>(
 /// # }
 /// ```
 pub fn parse_snmp_v3<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpV3Message<'a>, SnmpError> {
-    parse_ber_sequence_defined_g(|_, i| {
+    parse_ber_sequence_defined_g(|i, _| {
         let (i, version) = parse_ber_u32(i)?;
         let (i, header_data) = parse_snmp_v3_headerdata(i)?;
         let (i, secp) = map_res(parse_ber_octetstring, |x| parse_secp(&x, &header_data))(i)?;
@@ -162,7 +162,7 @@ pub fn parse_snmp_v3<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpV3Message<'a>, Sn
 }
 
 pub(crate) fn parse_snmp_v3_headerdata(i: &[u8]) -> IResult<&[u8], HeaderData, BerError> {
-    parse_ber_sequence_defined_g(|_, i| {
+    parse_ber_sequence_defined_g(|i, _| {
         let (i, msg_id) = parse_ber_u32(i)?;
         let (i, msg_max_size) = parse_ber_u32(i)?;
         let (i, msg_flags) = map_res(parse_ber_octetstring_as_slice, |s| {
@@ -184,7 +184,7 @@ pub(crate) fn parse_snmp_v3_headerdata(i: &[u8]) -> IResult<&[u8], HeaderData, B
 }
 
 fn parse_snmp_v3_plaintext_pdu(i: &[u8]) -> IResult<&[u8], ScopedPduData, BerError> {
-    parse_ber_sequence_defined_g(|_, i| {
+    parse_ber_sequence_defined_g(|i, _| {
         let (i, ctx_engine_id) = parse_ber_octetstring_as_slice(i)?;
         let (i, ctx_engine_name) = parse_ber_octetstring_as_slice(i)?;
         let (i, data) = parse_snmp_v2c_pdu(i)?;
