@@ -19,11 +19,11 @@ members = ["."]
 
 [[bin]]
 name = "fuzzer_snmp_v1"
-path = "fuzzers/fuzzer_snmp_v1.rs"
+path = "fuzz_targets/fuzzer_snmp_v1.rs"
 
 [[bin]]
 name = "fuzzer_snmp_v3"
-path = "fuzzers/fuzzer_snmp_v3.rs"
+path = "fuzz_targets/fuzzer_snmp_v3.rs"
 
 [[bin]]
 name = "fuzzer_snmp_generic"
