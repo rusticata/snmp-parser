@@ -144,7 +144,7 @@ pub(crate) fn parse_secp<'a>(
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v3<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpV3Message<'a>, SnmpError> {
+pub fn parse_snmp_v3(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
     parse_ber_sequence_defined_g(|i, _| {
         let (i, version) = parse_ber_u32(i)?;
         let (i, header_data) = parse_snmp_v3_headerdata(i)?;
