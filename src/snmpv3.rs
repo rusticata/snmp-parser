@@ -41,6 +41,7 @@ impl fmt::Debug for SecurityModel {
 }
 
 #[derive(Debug, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum SecurityParameters<'a> {
     Raw(&'a [u8]),
     USM(UsmSecurityParameters<'a>),
