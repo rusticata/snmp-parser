@@ -140,7 +140,7 @@ pub(crate) fn parse_secp<'a>(
 ///       ScopedPduData::Encrypted(_) => (),
 ///     }
 ///   },
-///   Err(e) => panic!(e),
+///   Err(e) => panic!("{}", e),
 /// }
 /// # }
 /// ```

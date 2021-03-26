@@ -534,7 +534,7 @@ fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerErro
 ///     assert!(r.community == String::from("public"));
 ///     assert!(r.vars_iter().count() == 1);
 ///   },
-///   Err(e) => panic!(e),
+///   Err(e) => panic!("{}", e),
 /// }
 /// # }
 /// ```
