@@ -23,7 +23,7 @@ include = [
 ]
 
 [dependencies]
-der-parser = "6.0.0-beta1"
+der-parser = "6.0.0"
 nom = "7.0"
 rusticata-macros = "4.0"
 thiserror = "1.0"
