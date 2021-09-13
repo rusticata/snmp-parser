@@ -425,7 +425,7 @@ fn parse_networkaddress(i: &[u8]) -> IResult<&[u8], NetworkAddress, BerError> {
                 return Err(Err::Error(BerError::InvalidTag));
             }
             match obj.content {
-                BerObjectContent::Unknown(_, s) if s.len() == 4 => Ok((
+                BerObjectContent::Unknown(_, _, s) if s.len() == 4 => Ok((
                     rem,
                     NetworkAddress::IPv4(Ipv4Addr::new(s[0], s[1], s[2], s[3])),
                 )),
