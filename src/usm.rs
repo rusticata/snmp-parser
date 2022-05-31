@@ -1,11 +1,10 @@
 //! RFC2274 - User-based Security Model (USM) for version 3 of the Simple Network Management Protocol (SNMPv3)
 
-use crate::snmp::parse_ber_octetstring_as_slice;
+use crate::parse_ber_octetstring_as_str;
+use asn1_rs::FromBer;
 use der_parser::ber::*;
 use der_parser::error::BerError;
-use nom::combinator::map_res;
 use nom::IResult;
-use std::str;
 
 #[derive(Debug, PartialEq)]
 pub struct UsmSecurityParameters<'a> {
@@ -19,12 +18,12 @@ pub struct UsmSecurityParameters<'a> {
 
 pub fn parse_usm_security_parameters(i: &[u8]) -> IResult<&[u8], UsmSecurityParameters, BerError> {
     parse_ber_sequence_defined_g(|i, _| {
-        let (i, msg_authoritative_engine_id) = parse_ber_octetstring_as_slice(i)?;
+        let (i, msg_authoritative_engine_id) = <&[u8]>::from_ber(i)?;
         let (i, msg_authoritative_engine_boots) = parse_ber_u32(i)?;
         let (i, msg_authoritative_engine_time) = parse_ber_u32(i)?;
-        let (i, msg_user_name) = map_res(parse_ber_octetstring_as_slice, str::from_utf8)(i)?;
-        let (i, msg_authentication_parameters) = parse_ber_octetstring_as_slice(i)?;
-        let (i, msg_privacy_parameters) = parse_ber_octetstring_as_slice(i)?;
+        let (i, msg_user_name) = parse_ber_octetstring_as_str(i)?;
+        let (i, msg_authentication_parameters) = <&[u8]>::from_ber(i)?;
+        let (i, msg_privacy_parameters) = <&[u8]>::from_ber(i)?;
         let usm = UsmSecurityParameters {
             msg_authoritative_engine_id,
             msg_authoritative_engine_boots,

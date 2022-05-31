@@ -23,11 +23,12 @@ include = [
 ]
 
 [dependencies]
-der-parser = "6.0.0"
+asn1-rs = "0.4"
+der-parser = "8.0"
 nom = "7.0"
 rusticata-macros = "4.0"
 thiserror = "1.0"
 
 [dev-dependencies]
 hex-literal = "0.3"
-pretty_assertions = "0.7"
+pretty_assertions = "1.0"

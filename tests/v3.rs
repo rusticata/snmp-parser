@@ -7,11 +7,10 @@ extern crate snmp_parser;
 
 use snmp_parser::*;
 
-static SNMPV3_REQ: &'static [u8] = include_bytes!("../assets/snmpv3_req.bin");
+static SNMPV3_REQ: &[u8] = include_bytes!("../assets/snmpv3_req.bin");
 
 #[test]
 fn test_snmp_v3_req() {
-    let empty = &b""[..];
     let bytes = SNMPV3_REQ;
     let sp = SecurityParameters::USM(UsmSecurityParameters {
         msg_authoritative_engine_id: b"",
@@ -43,58 +42,46 @@ fn test_snmp_v3_req() {
         data: ScopedPduData::Plaintext(ScopedPdu {
             ctx_engine_id: &cei,
             ctx_engine_name: b"",
-            data: data,
+            data,
         }),
     };
-    let res = parse_snmp_v3(&bytes);
+    let (rem, res) = parse_snmp_v3(bytes).expect("parsing failed");
     // eprintln!("{:?}", res);
-    assert_eq!(res, Ok((empty, expected)));
+    assert!(rem.is_empty());
+    assert_eq!(res, expected);
 }
 
 #[test]
 fn test_snmp_v3_req_encrypted() {
     let bytes = include_bytes!("../assets/snmpv3_req_encrypted.bin");
-    let res = parse_snmp_v3(bytes);
+    let (rem, msg) = parse_snmp_v3(bytes).expect("parsing failed");
     // eprintln!("{:?}", res);
-    match res {
-        Ok((rem, msg)) => {
-            assert!(rem.is_empty());
-            assert_eq!(msg.version, 3);
-            assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
-        }
-        _ => assert!(false),
-    }
+    assert!(rem.is_empty());
+    assert_eq!(msg.version, 3);
+    assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
 }
 
 #[test]
 fn test_snmp_v3_report() {
     let bytes = include_bytes!("../assets/snmpv3-report.bin");
-    let res = parse_snmp_v3(bytes);
+    let (rem, msg) = parse_snmp_v3(bytes).expect("parsing failed");
     // eprintln!("{:?}", res);
-    match res {
-        Ok((rem, msg)) => {
-            assert!(rem.is_empty());
-            assert_eq!(msg.version, 3);
-            assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
-        }
-        _ => assert!(false),
-    }
+    assert!(rem.is_empty());
+    assert_eq!(msg.version, 3);
+    assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
 }
 
 #[test]
 fn test_snmp_v3_generic() {
     let bytes = SNMPV3_REQ;
-    let res = parse_snmp_generic_message(&bytes);
+    let res = parse_snmp_generic_message(bytes);
     // eprintln!("{:?}", res);
-    match res.expect("parse_snmp_generic_message") {
-        (rem, m) => {
-            assert!(rem.is_empty());
-            if let SnmpGenericMessage::V3(msg) = m {
-                assert_eq!(msg.version, 3);
-                assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
-            } else {
-                assert!(false);
-            }
-        }
+    let (rem, m) = res.expect("parse_snmp_generic_message");
+    assert!(rem.is_empty());
+    if let SnmpGenericMessage::V3(msg) = m {
+        assert_eq!(msg.version, 3);
+        assert_eq!(msg.header_data.msg_security_model, SecurityModel::USM);
+    } else {
+        panic!("unexpected PDU type");
     }
 }

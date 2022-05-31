@@ -9,15 +9,20 @@
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
 
 use crate::error::SnmpError;
+use asn1_rs::{Any, BitString, FromBer, Integer};
+use asn1_rs::{Implicit, TaggedValue};
 use der_parser::ber::*;
 use der_parser::error::*;
 use der_parser::oid::Oid;
-use nom::bytes::streaming::take;
-use nom::combinator::{map, map_res};
+use nom::combinator::map;
 use nom::{Err, IResult};
+use std::convert::TryFrom;
 use std::net::Ipv4Addr;
 use std::slice::Iter;
 use std::{fmt, str};
+
+// This will be merged in next release of asn1-rs
+type Application<T, E, TagKind, const TAG: u32> = TaggedValue<T, E, TagKind, 0b01, TAG>;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct PduType(pub u32);
@@ -220,17 +225,69 @@ impl<'a> SnmpMessage<'a> {
 #[derive(Debug, PartialEq)]
 pub struct SnmpVariable<'a> {
     pub oid: Oid<'a>,
-    pub val: ObjectSyntax<'a>,
+    pub val: VarBindValue<'a>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum VarBindValue<'a> {
+    Value(ObjectSyntax<'a>),
+    Unspecified,
+    NoSuchObject,
+    NoSuchInstance,
+    EndOfMibView,
+}
+
+/// <pre>
+/// VarBind ::= SEQUENCE {
+///     name ObjectName,
+///
+///     CHOICE {
+///         value          ObjectSyntax,
+///         unSpecified    NULL,    -- in retrieval requests
+///
+///                                 -- exceptions in responses
+///         noSuchObject   [0] IMPLICIT NULL,
+///         noSuchInstance [1] IMPLICIT NULL,
+///         endOfMibView   [2] IMPLICIT NULL
+///     }
+/// }
+/// </pre>
+impl<'a> TryFrom<Any<'a>> for SnmpVariable<'a> {
+    type Error = BerError;
+
+    fn try_from(any: Any<'a>) -> Result<SnmpVariable<'a>, Self::Error> {
+        let (rem, oid) = Oid::from_ber(any.data)?;
+        let (_, choice) = Any::from_ber(rem)?;
+        let val = if choice.header.is_contextspecific() {
+            match choice.tag().0 {
+                0 => VarBindValue::NoSuchObject,
+                1 => VarBindValue::NoSuchInstance,
+                2 => VarBindValue::EndOfMibView,
+                _ => {
+                    return Err(BerError::invalid_value(
+                        choice.tag(),
+                        "invalid VarBind tag".to_string(),
+                    ))
+                }
+            }
+        } else if choice.tag() == Tag::Null {
+            VarBindValue::Unspecified
+        } else {
+            VarBindValue::Value(ObjectSyntax::try_from(choice)?)
+        };
+        let var_bind = SnmpVariable { oid, val };
+        Ok(var_bind)
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum ObjectSyntax<'a> {
-    Number(BerObject<'a>),
+    Number(i32),
     String(&'a [u8]),
     Object(Oid<'a>),
-    BitString(u8, BitStringObject<'a>),
+    BitString(BitString<'a>),
     Empty,
-    UnknownSimple(BerObject<'a>),
+    UnknownSimple(Any<'a>),
     IpAddress(NetworkAddress),
     Counter32(Counter),
     Gauge32(Gauge),
@@ -239,173 +296,127 @@ pub enum ObjectSyntax<'a> {
     NsapAddress(&'a [u8]),
     Counter64(u64),
     UInteger32(u32),
-    UnknownApplication(u32, &'a [u8]),
+    UnknownApplication(Any<'a>),
 }
 
-pub(crate) fn parse_ber_octetstring_as_slice(i: &[u8]) -> IResult<&[u8], &[u8], BerError> {
-    match parse_ber_octetstring(i) {
-        Ok((rem, ref obj)) => match obj.content {
-            BerObjectContent::OctetString(s) => Ok((rem, s)),
-            _ => Err(Err::Error(BerError::InvalidTag)),
-        },
-        Err(e) => Err(e),
-    }
-}
+/// <pre>
+/// ObjectSyntax ::= CHOICE {
+///     simple           SimpleSyntax,
+///     application-wide ApplicationSyntax }
+///
+/// SimpleSyntax ::= CHOICE {
+///     integer-value   INTEGER (-2147483648..2147483647),
+///     string-value    OCTET STRING (SIZE (0..65535)),
+///     objectID-value  OBJECT IDENTIFIER }
+///
+/// ApplicationSyntax ::= CHOICE {
+///     ipAddress-value        IpAddress,
+///     counter-value          Counter32,
+///     timeticks-value        TimeTicks,
+///     arbitrary-value        Opaque,
+///     big-counter-value      Counter64,
+///     unsigned-integer-value Unsigned32 }
+/// </pre>
+impl<'a> TryFrom<Any<'a>> for ObjectSyntax<'a> {
+    type Error = BerError;
 
-// from RFC2578
-// ObjectSyntax ::=
-//     CHOICE {
-//         simple
-//             SimpleSyntax,
-//
-//           -- note that SEQUENCEs for conceptual tables and
-//           -- rows are not mentioned here...
-//
-//         application-wide
-//             ApplicationSyntax
-//     }
-//
-// Defined in RFC1442 and RFC2578
-fn parse_objectsyntax<'a>(i: &'a [u8]) -> IResult<&'a [u8], ObjectSyntax, BerError> {
-    let (rem, hdr) = ber_read_element_header(i)?;
-    if hdr.is_application() {
-        match hdr.tag.0 {
-            0 => {
-                // IpAddress ::=
-                //     [APPLICATION 0]
-                //         IMPLICIT OCTET STRING (SIZE (4))
-                let (rem, content) = ber_read_element_content_as(
-                    rem,
-                    BerTag::OctetString,
-                    hdr.len,
-                    hdr.is_constructed(),
-                    0,
-                )?;
-                match content {
-                    BerObjectContent::OctetString(s) if s.len() == 4 => {
+    fn try_from(any: Any<'a>) -> Result<ObjectSyntax<'a>, Self::Error> {
+        if any.header.is_application() {
+            // ApplicationSyntax
+            match any.header.tag().0 {
+                0 => {
+                    // IpAddress ::=
+                    //     [APPLICATION 0]
+                    //         IMPLICIT OCTET STRING (SIZE (4))
+                    let s = any.data;
+                    if s.len() == 4 {
                         let ipv4 = NetworkAddress::IPv4(Ipv4Addr::new(s[0], s[1], s[2], s[3]));
-                        Ok((rem, ObjectSyntax::IpAddress(ipv4)))
+                        Ok(ObjectSyntax::IpAddress(ipv4))
+                    } else {
+                        Err(BerError::InvalidTag)
                     }
-                    _ => Err(Err::Error(BerError::InvalidTag)),
                 }
+                tag @ 1..=3 => {
+                    // -- this wraps
+                    // Counter32 ::=
+                    //     [APPLICATION 1]
+                    //         IMPLICIT INTEGER (0..4294967295)
+                    //
+                    // -- this doesn't wrap
+                    // Gauge32 ::=
+                    //     [APPLICATION 2]
+                    //         IMPLICIT INTEGER (0..4294967295)
+                    //
+                    // -- an unsigned 32-bit quantity
+                    // -- indistinguishable from Gauge32
+                    // Unsigned32 ::=
+                    //     [APPLICATION 2]
+                    //         IMPLICIT INTEGER (0..4294967295)
+                    //
+                    // -- hundredths of seconds since an epoch
+                    // TimeTicks ::=
+                    //     [APPLICATION 3]
+                    //         IMPLICIT INTEGER (0..4294967295)
+                    let x = Integer::new(any.data).as_u32()?;
+                    let obj = match tag {
+                        1 => ObjectSyntax::Counter32(x),
+                        2 => ObjectSyntax::Gauge32(x),
+                        3 => ObjectSyntax::TimeTicks(x),
+                        _ => unreachable!(),
+                    };
+                    Ok(obj)
+                }
+                4 => Ok(ObjectSyntax::Opaque(any.data)),
+                5 => Ok(ObjectSyntax::NsapAddress(any.data)),
+                6 => {
+                    let counter = Integer::new(any.data).as_u64()?;
+                    Ok(ObjectSyntax::Counter64(counter))
+                }
+                7 => {
+                    let number = Integer::new(any.data).as_u32()?;
+                    Ok(ObjectSyntax::UInteger32(number))
+                }
+                _ => Ok(ObjectSyntax::UnknownApplication(any)),
             }
-            1..=3 => {
-                // -- this wraps
-                // Counter32 ::=
-                //     [APPLICATION 1]
-                //         IMPLICIT INTEGER (0..4294967295)
-                //
-                // -- this doesn't wrap
-                // Gauge32 ::=
-                //     [APPLICATION 2]
-                //         IMPLICIT INTEGER (0..4294967295)
-                //
-                // -- an unsigned 32-bit quantity
-                // -- indistinguishable from Gauge32
-                // Unsigned32 ::=
-                //     [APPLICATION 2]
-                //         IMPLICIT INTEGER (0..4294967295)
-                //
-                // -- hundredths of seconds since an epoch
-                // TimeTicks ::=
-                //     [APPLICATION 3]
-                //         IMPLICIT INTEGER (0..4294967295)
-                let (rem, content) = ber_read_element_content_as(
-                    rem,
-                    BerTag::Integer,
-                    hdr.len,
-                    hdr.is_constructed(),
-                    0,
-                )?;
-                let x = content.as_u32()?;
-                let obj = match hdr.tag.0 {
-                    1 => ObjectSyntax::Counter32(x),
-                    2 => ObjectSyntax::Gauge32(x),
-                    3 => ObjectSyntax::TimeTicks(x),
-                    _ => unreachable!(),
-                };
-                Ok((rem, obj))
+        } else {
+            // SimpleSyntax
+
+            // Some implementations do not send NULL, but empty objects
+            // Treat 0-length objects as ObjectSyntax::Empty
+            if any.data.is_empty() {
+                return Ok(ObjectSyntax::Empty);
             }
-            4 => {
-                let len = hdr.len.primitive()?;
-                map(take(len), ObjectSyntax::Opaque)(rem)
-            }
-            5 => {
-                let len = hdr.len.primitive()?;
-                map(take(len), ObjectSyntax::NsapAddress)(rem)
-            }
-            6 => {
-                let (rem, content) = ber_read_element_content_as(
-                    rem,
-                    BerTag::Integer,
-                    hdr.len,
-                    hdr.is_constructed(),
-                    0,
-                )?;
-                let value = content.as_u64()?;
-                Ok((rem, ObjectSyntax::Counter64(value)))
-            }
-            7 => {
-                let (rem, content) = ber_read_element_content_as(
-                    rem,
-                    BerTag::Integer,
-                    hdr.len,
-                    hdr.is_constructed(),
-                    0,
-                )?;
-                let value = content.as_u32()?;
-                Ok((rem, ObjectSyntax::UInteger32(value)))
-            }
-            _ => {
-                let len = hdr.len.primitive()?;
-                map(take(len), |x| {
-                    ObjectSyntax::UnknownApplication(hdr.tag.0, x)
-                })(rem)
-            }
+            let obj = match any.header.tag() {
+                Tag::BitString => ObjectSyntax::BitString(any.bitstring()?),
+                Tag::Integer => {
+                    let number = any.integer()?.as_i32()?;
+                    ObjectSyntax::Number(number)
+                }
+                Tag::Null => ObjectSyntax::Empty,
+                Tag::Oid => ObjectSyntax::Object(any.oid()?),
+                Tag::OctetString => ObjectSyntax::String(any.data),
+                _ => ObjectSyntax::UnknownSimple(any),
+            };
+            Ok(obj)
         }
-    } else {
-        // SimpleSyntax ::=
-        //     CHOICE {
-        //         -- INTEGERs with a more restrictive range
-        //         -- may also be used
-        //         integer-value               -- includes Integer32
-        //             INTEGER (-2147483648..2147483647),
-        //
-        //         -- OCTET STRINGs with a more restrictive size
-        //         -- may also be used
-        //         string-value
-        //             OCTET STRING (SIZE (0..65535)),
-        //
-        //         objectID-value
-        //             OBJECT IDENTIFIER
-        //     }
-        if hdr.len.is_null() {
-            return Ok((rem, ObjectSyntax::Empty));
-        }
-        let (rem, content) =
-            ber_read_element_content_as(rem, hdr.tag, hdr.len, hdr.is_constructed(), 0)?;
-        let obj = match content {
-            BerObjectContent::Integer(_) => ObjectSyntax::Number(BerObject::from_obj(content)),
-            BerObjectContent::OctetString(s) => ObjectSyntax::String(s),
-            BerObjectContent::OID(o) => ObjectSyntax::Object(o),
-            BerObjectContent::BitString(a, s) => ObjectSyntax::BitString(a, s),
-            BerObjectContent::Null => ObjectSyntax::Empty,
-            _ => ObjectSyntax::UnknownSimple(BerObject::from_obj(content)),
-        };
-        Ok((rem, obj))
     }
 }
 
-fn parse_varbind<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpVariable, BerError> {
-    parse_ber_sequence_defined_g(|i, _| {
-        let (i, oid) = map_res(parse_ber_oid, |x| x.as_oid_val())(i)?;
-        let (i, val) = parse_objectsyntax(i)?;
-        Ok((i, SnmpVariable { oid, val }))
-    })(i)
+#[inline]
+pub(crate) fn parse_ber_octetstring_as_slice(i: &[u8]) -> IResult<&[u8], &[u8], BerError> {
+    <&[u8]>::from_ber(i)
+}
+
+#[inline]
+pub(crate) fn parse_ber_octetstring_as_str(i: &[u8]) -> IResult<&[u8], &str, BerError> {
+    let (rem, b) = <&[u8]>::from_ber(i)?;
+    let s = core::str::from_utf8(b).map_err(|_| BerError::StringInvalidCharset)?;
+    Ok((rem, s))
 }
 
 fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable>, BerError> {
-    parse_ber_sequence_of_v(parse_varbind)(i)
+    // parse_ber_sequence_of_v(parse_varbind)(i)
+    <Vec<SnmpVariable>>::from_ber(i)
 }
 
 /// <pre>
@@ -419,20 +430,19 @@ fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable>, BerError> {
 ///         IMPLICIT OCTET STRING (SIZE (4))
 /// </pre>
 fn parse_networkaddress(i: &[u8]) -> IResult<&[u8], NetworkAddress, BerError> {
-    match parse_ber(i) {
-        Ok((rem, obj)) => {
-            if obj.header.tag != BerTag::EndOfContent || obj.header.class != BerClass::Application {
-                return Err(Err::Error(BerError::InvalidTag));
-            }
-            match obj.content {
-                BerObjectContent::Unknown(_, _, s) if s.len() == 4 => Ok((
-                    rem,
-                    NetworkAddress::IPv4(Ipv4Addr::new(s[0], s[1], s[2], s[3])),
-                )),
-                _ => Err(Err::Error(BerError::InvalidTag)),
-            }
-        }
-        Err(e) => Err(e),
+    let (rem, tagged) = Application::<&[u8], _, Implicit, 0>::from_ber(i)?;
+
+    let s = tagged.into_inner();
+    if s.len() == 4 {
+        Ok((
+            rem,
+            NetworkAddress::IPv4(Ipv4Addr::new(s[0], s[1], s[2], s[3])),
+        ))
+    } else {
+        Err(Err::Error(BerError::invalid_value(
+            Tag::OctetString,
+            "NetworkAddress invalid length".to_string(),
+        )))
     }
 }
 
@@ -442,21 +452,14 @@ fn parse_networkaddress(i: &[u8]) -> IResult<&[u8], NetworkAddress, BerError> {
 ///         IMPLICIT INTEGER (0..4294967295)
 /// </pre>
 fn parse_timeticks(i: &[u8]) -> IResult<&[u8], TimeTicks, BerError> {
-    parse_ber_tagged_implicit_g(BerTag(3), |i, hdr, depth| {
-        if !hdr.is_application() {
-            return Err(Err::Error(BerError::InvalidTag));
-        }
-        let (i, content) =
-            ber_read_element_content_as(i, BerTag::Integer, hdr.len, hdr.is_constructed(), depth)?;
-        let value = content.as_u32()?;
-        Ok((i, value))
-    })(i)
+    let (rem, tagged) = Application::<u32, _, Implicit, 3>::from_ber(i)?;
+    Ok((rem, tagged.into_inner()))
 }
 
 fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu, BerError> {
-    let (i, req_id) = parse_ber_u32(pdu)?;
-    let (i, err) = map(parse_ber_u32, ErrorStatus)(i)?;
-    let (i, err_index) = parse_ber_u32(i)?;
+    let (i, req_id) = u32::from_ber(pdu)?;
+    let (i, err) = map(u32::from_ber, ErrorStatus)(i)?;
+    let (i, err_index) = u32::from_ber(i)?;
     let (i, var) = parse_varbind_list(i)?;
     let pdu = SnmpPdu::Generic(SnmpGenericPdu {
         pdu_type: tag,
@@ -469,9 +472,9 @@ fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu
 }
 
 fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
-    let (i, req_id) = parse_ber_u32(i)?;
-    let (i, non_repeaters) = parse_ber_u32(i)?;
-    let (i, max_repetitions) = parse_ber_u32(i)?;
+    let (i, req_id) = u32::from_ber(i)?;
+    let (i, non_repeaters) = u32::from_ber(i)?;
+    let (i, max_repetitions) = u32::from_ber(i)?;
     let (i, var) = parse_varbind_list(i)?;
     let pdu = SnmpBulkPdu {
         req_id,
@@ -483,10 +486,10 @@ fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
 }
 
 fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerError> {
-    let (i, enterprise) = map_res(parse_ber_oid, |x| x.as_oid_val())(i)?;
+    let (i, enterprise) = Oid::from_ber(i)?;
     let (i, agent_addr) = parse_networkaddress(i)?;
-    let (i, generic_trap) = parse_ber_u32(i)?;
-    let (i, specific_trap) = parse_ber_u32(i)?;
+    let (i, generic_trap) = u32::from_ber(i)?;
+    let (i, specific_trap) = u32::from_ber(i)?;
     let (i, timestamp) = parse_timeticks(i)?;
     let (i, var) = parse_varbind_list(i)?;
     let pdu = SnmpTrapPdu {
@@ -540,11 +543,11 @@ fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerErro
 /// ```
 pub fn parse_snmp_v1(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
     parse_ber_sequence_defined_g(|i, _| {
-        let (i, version) = parse_ber_u32(i)?;
+        let (i, version) = u32::from_ber(i)?;
         if version != 0 {
             return Err(Err::Error(BerError::BerValueError));
         }
-        let (i, community) = map_res(parse_ber_octetstring_as_slice, str::from_utf8)(i)?;
+        let (i, community) = parse_ber_octetstring_as_str(i)?;
         let (i, pdu) = parse_snmp_v1_pdu(i)?;
         let msg = SnmpMessage {
             version,
@@ -559,11 +562,11 @@ pub fn parse_snmp_v1(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
 pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
     match ber_read_element_header(i) {
         Ok((rem,hdr)) => {
-            match PduType(hdr.tag.0) {
+            match PduType(hdr.tag().0) {
                 PduType::GetRequest |
                 PduType::GetNextRequest |
                 PduType::Response |
-                PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag.0)),
+                PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
                 _                       => Err(Err::Error(BerError::BerValueError)),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
@@ -597,11 +600,11 @@ pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
 /// </pre>
 pub fn parse_snmp_v2c(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
     parse_ber_sequence_defined_g(|i, _| {
-        let (i, version) = parse_ber_u32(i)?;
+        let (i, version) = u32::from_ber(i)?;
         if version != 1 {
             return Err(Err::Error(BerError::BerValueError));
         }
-        let (i, community) = map_res(parse_ber_octetstring_as_slice, str::from_utf8)(i)?;
+        let (i, community) = parse_ber_octetstring_as_str(i)?;
         let (i, pdu) = parse_snmp_v2c_pdu(i)?;
         let msg = SnmpMessage {
             version,
@@ -616,14 +619,14 @@ pub fn parse_snmp_v2c(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
 pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
     match ber_read_element_header(i) {
         Ok((rem,hdr)) => {
-            match PduType(hdr.tag.0) {
+            match PduType(hdr.tag().0) {
                 PduType::GetRequest |
                 PduType::GetNextRequest |
                 PduType::Response |
                 PduType::SetRequest |
                 PduType::InformRequest |
                 PduType::TrapV2 |
-                PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag.0)),
+                PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
                 PduType::GetBulkRequest => parse_snmp_v1_bulk_pdu(rem),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
                 _                       => Err(Err::Error(BerError::BerValueError)),

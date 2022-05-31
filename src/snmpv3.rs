@@ -10,6 +10,8 @@
 
 use std::fmt;
 
+use asn1_rs::FromBer;
+use asn1_rs::Sequence;
 use der_parser::ber::*;
 use der_parser::error::*;
 use nom::combinator::{map, map_res};
@@ -37,6 +39,12 @@ impl fmt::Debug for SecurityModel {
             3 => f.write_str("USM"),
             n => f.debug_tuple("SecurityModel").field(&n).finish(),
         }
+    }
+}
+
+impl<'a> FromBer<'a> for SecurityModel {
+    fn from_ber(bytes: &'a [u8]) -> asn1_rs::ParseResult<'a, Self> {
+        map(u32::from_ber, SecurityModel)(bytes)
     }
 }
 
@@ -79,6 +87,29 @@ impl HeaderData {
     }
 }
 
+impl<'a> FromBer<'a> for HeaderData {
+    fn from_ber(bytes: &'a [u8]) -> asn1_rs::ParseResult<'a, Self> {
+        Sequence::from_ber_and_then(bytes, |i| {
+            let (i, msg_id) = u32::from_ber(i)?;
+            let (i, msg_max_size) = u32::from_ber(i)?;
+            let (i, b) = <&[u8]>::from_ber(i)?;
+            let msg_flags = if b.len() == 1 {
+                b[0]
+            } else {
+                return Err(Err::Error(BerError::BerValueError));
+            };
+            let (i, msg_security_model) = map(u32::from_ber, SecurityModel)(i)?;
+            let hdr = HeaderData {
+                msg_id,
+                msg_max_size,
+                msg_flags,
+                msg_security_model,
+            };
+            Ok((i, hdr))
+        })
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ScopedPduData<'a> {
     Plaintext(ScopedPdu<'a>),
@@ -98,9 +129,7 @@ pub(crate) fn parse_snmp_v3_data<'a>(
     hdr: &HeaderData,
 ) -> IResult<&'a [u8], ScopedPduData<'a>, BerError> {
     if hdr.is_encrypted() {
-        map_res(parse_ber_octetstring, |x| {
-            x.as_slice().map(ScopedPduData::Encrypted)
-        })(i)
+        map(<&[u8]>::from_ber, ScopedPduData::Encrypted)(i)
     } else {
         parse_snmp_v3_plaintext_pdu(i)
     }
@@ -162,26 +191,9 @@ pub fn parse_snmp_v3(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
     .map_err(Err::convert)
 }
 
+#[inline]
 pub(crate) fn parse_snmp_v3_headerdata(i: &[u8]) -> IResult<&[u8], HeaderData, BerError> {
-    parse_ber_sequence_defined_g(|i, _| {
-        let (i, msg_id) = parse_ber_u32(i)?;
-        let (i, msg_max_size) = parse_ber_u32(i)?;
-        let (i, msg_flags) = map_res(parse_ber_octetstring_as_slice, |s| {
-            if s.len() == 1 {
-                Ok(s[0])
-            } else {
-                Err(BerError::BerValueError)
-            }
-        })(i)?;
-        let (i, msg_security_model) = map(parse_ber_u32, SecurityModel)(i)?;
-        let hdr = HeaderData {
-            msg_id,
-            msg_max_size,
-            msg_flags,
-            msg_security_model,
-        };
-        Ok((i, hdr))
-    })(i)
+    HeaderData::from_ber(i)
 }
 
 fn parse_snmp_v3_plaintext_pdu(i: &[u8]) -> IResult<&[u8], ScopedPduData, BerError> {
