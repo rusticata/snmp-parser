@@ -479,7 +479,7 @@ fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
     Ok((i, SnmpPdu::Bulk(pdu)))
 }
 
-fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, SnmpError> {
+fn parse_snmp_v1_trap_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
     let (i, enterprise) = Oid::from_ber(i).map_err(Err::convert)?;
     let (i, agent_addr) = NetworkAddress::from_ber(i).map_err(Err::convert)?;
     let (i, generic_trap) = u32::from_ber(i).map_err(Err::convert)?;

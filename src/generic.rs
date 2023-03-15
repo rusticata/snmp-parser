@@ -47,9 +47,7 @@ fn parse_snmp_v3_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpErro
     Ok((i, msg))
 }
 
-pub fn parse_snmp_generic_message<'a>(
-    i: &'a [u8],
-) -> IResult<&'a [u8], SnmpGenericMessage, SnmpError> {
+pub fn parse_snmp_generic_message(i: &[u8]) -> IResult<&[u8], SnmpGenericMessage, SnmpError> {
     let (rem, any) = Any::from_ber(i).or(Err(Err::Error(SnmpError::InvalidMessage)))?;
     if any.tag() != Tag::Sequence {
         return Err(Err::Error(SnmpError::InvalidMessage));
