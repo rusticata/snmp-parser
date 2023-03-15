@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-extern crate der_parser;
 extern crate nom;
 extern crate snmp_parser;
 

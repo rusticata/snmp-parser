@@ -1,10 +1,9 @@
 #[macro_use]
 extern crate pretty_assertions;
-extern crate der_parser;
 extern crate nom;
 extern crate snmp_parser;
 
-use der_parser::oid::Oid;
+use asn1_rs::Oid;
 use snmp_parser::*;
 
 static SNMPV2_GET: &[u8] = include_bytes!("../assets/snmpv2c-get-response.bin");
@@ -23,15 +22,15 @@ fn test_snmp_v2_get() {
             var: vec![
                 SnmpVariable {
                     oid: Oid::from(&[1, 3, 6, 1, 2, 1, 25, 1, 1, 0]).unwrap(),
-                    val: ObjectSyntax::TimeTicks(970069),
+                    val: VarBindValue::Value(ObjectSyntax::TimeTicks(970069)),
                 },
                 SnmpVariable {
                     oid: Oid::from(&[1, 3, 6, 1, 2, 1, 25, 1, 5, 0]).unwrap(),
-                    val: ObjectSyntax::Gauge32(3),
+                    val: VarBindValue::Value(ObjectSyntax::Gauge32(3)),
                 },
                 SnmpVariable {
                     oid: Oid::from(&[1, 3, 6, 1, 2, 1, 25, 1, 5, 1]).unwrap(),
-                    val: ObjectSyntax::Empty,
+                    val: VarBindValue::NoSuchInstance,
                 },
             ],
         }),

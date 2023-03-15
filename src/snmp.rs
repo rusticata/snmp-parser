@@ -9,11 +9,10 @@
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
 
 use crate::error::SnmpError;
-use asn1_rs::{Any, BitString, FromBer, Integer};
-use asn1_rs::{Implicit, TaggedValue};
-use der_parser::ber::*;
-use der_parser::error::*;
-use der_parser::oid::Oid;
+use asn1_rs::{
+    Any, BitString, Class, Error, FromBer, Header, Implicit, Integer, Oid, Sequence, Tag,
+    TaggedValue,
+};
 use nom::combinator::map;
 use nom::{Err, IResult};
 use std::convert::TryFrom;
@@ -253,7 +252,7 @@ pub enum VarBindValue<'a> {
 /// }
 /// </pre>
 impl<'a> TryFrom<Any<'a>> for SnmpVariable<'a> {
-    type Error = BerError;
+    type Error = Error;
 
     fn try_from(any: Any<'a>) -> Result<SnmpVariable<'a>, Self::Error> {
         let (rem, oid) = Oid::from_ber(any.data)?;
@@ -264,7 +263,7 @@ impl<'a> TryFrom<Any<'a>> for SnmpVariable<'a> {
                 1 => VarBindValue::NoSuchInstance,
                 2 => VarBindValue::EndOfMibView,
                 _ => {
-                    return Err(BerError::invalid_value(
+                    return Err(Error::invalid_value(
                         choice.tag(),
                         "invalid VarBind tag".to_string(),
                     ))
@@ -318,7 +317,7 @@ pub enum ObjectSyntax<'a> {
 ///     unsigned-integer-value Unsigned32 }
 /// </pre>
 impl<'a> TryFrom<Any<'a>> for ObjectSyntax<'a> {
-    type Error = BerError;
+    type Error = Error;
 
     fn try_from(any: Any<'a>) -> Result<ObjectSyntax<'a>, Self::Error> {
         if any.header.is_application() {
@@ -333,7 +332,7 @@ impl<'a> TryFrom<Any<'a>> for ObjectSyntax<'a> {
                         let ipv4 = NetworkAddress::IPv4(Ipv4Addr::new(s[0], s[1], s[2], s[3]));
                         Ok(ObjectSyntax::IpAddress(ipv4))
                     } else {
-                        Err(BerError::InvalidTag)
+                        Err(Error::InvalidTag)
                     }
                 }
                 tag @ 1..=3 => {
@@ -403,18 +402,13 @@ impl<'a> TryFrom<Any<'a>> for ObjectSyntax<'a> {
 }
 
 #[inline]
-pub(crate) fn parse_ber_octetstring_as_slice(i: &[u8]) -> IResult<&[u8], &[u8], BerError> {
-    <&[u8]>::from_ber(i)
-}
-
-#[inline]
-pub(crate) fn parse_ber_octetstring_as_str(i: &[u8]) -> IResult<&[u8], &str, BerError> {
+pub(crate) fn parse_ber_octetstring_as_str(i: &[u8]) -> IResult<&[u8], &str, Error> {
     let (rem, b) = <&[u8]>::from_ber(i)?;
-    let s = core::str::from_utf8(b).map_err(|_| BerError::StringInvalidCharset)?;
+    let s = core::str::from_utf8(b).map_err(|_| Error::StringInvalidCharset)?;
     Ok((rem, s))
 }
 
-fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable>, BerError> {
+fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable>, Error> {
     // parse_ber_sequence_of_v(parse_varbind)(i)
     <Vec<SnmpVariable>>::from_ber(i)
 }
@@ -429,20 +423,20 @@ fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable>, BerError> {
 ///     [APPLICATION 0]          -- in network-byte order
 ///         IMPLICIT OCTET STRING (SIZE (4))
 /// </pre>
-fn parse_networkaddress(i: &[u8]) -> IResult<&[u8], NetworkAddress, BerError> {
-    let (rem, tagged) = Application::<&[u8], _, Implicit, 0>::from_ber(i)?;
+impl<'a> TryFrom<Any<'a>> for NetworkAddress {
+    type Error = Error;
 
-    let s = tagged.into_inner();
-    if s.len() == 4 {
-        Ok((
-            rem,
-            NetworkAddress::IPv4(Ipv4Addr::new(s[0], s[1], s[2], s[3])),
-        ))
-    } else {
-        Err(Err::Error(BerError::invalid_value(
-            Tag::OctetString,
-            "NetworkAddress invalid length".to_string(),
-        )))
+    fn try_from(any: Any<'a>) -> Result<Self, Self::Error> {
+        any.class().assert_eq(Class::Application)?;
+        let s = any.data;
+        if s.len() == 4 {
+            Ok(NetworkAddress::IPv4(Ipv4Addr::new(s[0], s[1], s[2], s[3])))
+        } else {
+            Err(Error::invalid_value(
+                Tag::OctetString,
+                "NetworkAddress invalid length".to_string(),
+            ))
+        }
     }
 }
 
@@ -451,16 +445,16 @@ fn parse_networkaddress(i: &[u8]) -> IResult<&[u8], NetworkAddress, BerError> {
 ///     [APPLICATION 3]
 ///         IMPLICIT INTEGER (0..4294967295)
 /// </pre>
-fn parse_timeticks(i: &[u8]) -> IResult<&[u8], TimeTicks, BerError> {
+fn parse_timeticks(i: &[u8]) -> IResult<&[u8], TimeTicks, Error> {
     let (rem, tagged) = Application::<u32, _, Implicit, 3>::from_ber(i)?;
     Ok((rem, tagged.into_inner()))
 }
 
-fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu, BerError> {
-    let (i, req_id) = u32::from_ber(pdu)?;
-    let (i, err) = map(u32::from_ber, ErrorStatus)(i)?;
-    let (i, err_index) = u32::from_ber(i)?;
-    let (i, var) = parse_varbind_list(i)?;
+fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu, SnmpError> {
+    let (i, req_id) = u32::from_ber(pdu).map_err(Err::convert)?;
+    let (i, err) = map(u32::from_ber, ErrorStatus)(i).map_err(Err::convert)?;
+    let (i, err_index) = u32::from_ber(i).map_err(Err::convert)?;
+    let (i, var) = parse_varbind_list(i).map_err(Err::convert)?;
     let pdu = SnmpPdu::Generic(SnmpGenericPdu {
         pdu_type: tag,
         req_id,
@@ -471,11 +465,11 @@ fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu
     Ok((i, pdu))
 }
 
-fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
-    let (i, req_id) = u32::from_ber(i)?;
-    let (i, non_repeaters) = u32::from_ber(i)?;
-    let (i, max_repetitions) = u32::from_ber(i)?;
-    let (i, var) = parse_varbind_list(i)?;
+fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
+    let (i, req_id) = u32::from_ber(i).map_err(Err::convert)?;
+    let (i, non_repeaters) = u32::from_ber(i).map_err(Err::convert)?;
+    let (i, max_repetitions) = u32::from_ber(i).map_err(Err::convert)?;
+    let (i, var) = parse_varbind_list(i).map_err(Err::convert)?;
     let pdu = SnmpBulkPdu {
         req_id,
         non_repeaters,
@@ -485,13 +479,13 @@ fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
     Ok((i, SnmpPdu::Bulk(pdu)))
 }
 
-fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerError> {
-    let (i, enterprise) = Oid::from_ber(i)?;
-    let (i, agent_addr) = parse_networkaddress(i)?;
-    let (i, generic_trap) = u32::from_ber(i)?;
-    let (i, specific_trap) = u32::from_ber(i)?;
-    let (i, timestamp) = parse_timeticks(i)?;
-    let (i, var) = parse_varbind_list(i)?;
+fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, SnmpError> {
+    let (i, enterprise) = Oid::from_ber(i).map_err(Err::convert)?;
+    let (i, agent_addr) = NetworkAddress::from_ber(i).map_err(Err::convert)?;
+    let (i, generic_trap) = u32::from_ber(i).map_err(Err::convert)?;
+    let (i, specific_trap) = u32::from_ber(i).map_err(Err::convert)?;
+    let (i, timestamp) = parse_timeticks(i).map_err(Err::convert)?;
+    let (i, var) = parse_varbind_list(i).map_err(Err::convert)?;
     let pdu = SnmpTrapPdu {
         enterprise,
         agent_addr,
@@ -541,13 +535,13 @@ fn parse_snmp_v1_trap_pdu<'a>(i: &'a [u8]) -> IResult<&'a [u8], SnmpPdu, BerErro
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v1(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
-    parse_ber_sequence_defined_g(|i, _| {
-        let (i, version) = u32::from_ber(i)?;
+pub fn parse_snmp_v1(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+    Sequence::from_der_and_then(bytes, |i| {
+        let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         if version != 0 {
-            return Err(Err::Error(BerError::BerValueError));
+            return Err(Err::Error(SnmpError::InvalidVersion));
         }
-        let (i, community) = parse_ber_octetstring_as_str(i)?;
+        let (i, community) = parse_ber_octetstring_as_str(i).map_err(Err::convert)?;
         let (i, pdu) = parse_snmp_v1_pdu(i)?;
         let msg = SnmpMessage {
             version,
@@ -555,24 +549,24 @@ pub fn parse_snmp_v1(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
             pdu,
         };
         Ok((i, msg))
-    })(i)
-    .map_err(Err::convert)
+    })
+    //.map_err(Err::convert)
 }
 
-pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
-    match ber_read_element_header(i) {
-        Ok((rem,hdr)) => {
+pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
+    match Header::from_ber(i) {
+        Ok((rem, hdr)) => {
             match PduType(hdr.tag().0) {
                 PduType::GetRequest |
                 PduType::GetNextRequest |
                 PduType::Response |
                 PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
-                _                       => Err(Err::Error(BerError::BerValueError)),
+                _                       => Err(Err::Error(SnmpError::InvalidPduType)),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
         },
-        Err(e)        => Err(e)
+        Err(e)        => Err(Err::convert(e))
         // IResult::Incomplete(i) => IResult::Incomplete(i),
         // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
         // // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),
@@ -598,13 +592,13 @@ pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
 ///                 ANY
 ///         }
 /// </pre>
-pub fn parse_snmp_v2c(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
-    parse_ber_sequence_defined_g(|i, _| {
-        let (i, version) = u32::from_ber(i)?;
+pub fn parse_snmp_v2c(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+    Sequence::from_der_and_then(bytes, |i| {
+        let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         if version != 1 {
-            return Err(Err::Error(BerError::BerValueError));
+            return Err(Err::Error(SnmpError::InvalidVersion));
         }
-        let (i, community) = parse_ber_octetstring_as_str(i)?;
+        let (i, community) = parse_ber_octetstring_as_str(i).map_err(Err::convert)?;
         let (i, pdu) = parse_snmp_v2c_pdu(i)?;
         let msg = SnmpMessage {
             version,
@@ -612,13 +606,12 @@ pub fn parse_snmp_v2c(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
             pdu,
         };
         Ok((i, msg))
-    })(i)
-    .map_err(Err::convert)
+    })
 }
 
-pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> {
-    match ber_read_element_header(i) {
-        Ok((rem,hdr)) => {
+pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
+    match Header::from_ber(i) {
+        Ok((rem, hdr)) => {
             match PduType(hdr.tag().0) {
                 PduType::GetRequest |
                 PduType::GetNextRequest |
@@ -629,11 +622,11 @@ pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, BerError> 
                 PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
                 PduType::GetBulkRequest => parse_snmp_v1_bulk_pdu(rem),
                 PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
-                _                       => Err(Err::Error(BerError::BerValueError)),
+                _                       => Err(Err::Error(SnmpError::InvalidPduType)),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
         },
-        Err(e)        => Err(e)
+        Err(e)        => Err(Err::convert(e))
         // IResult::Incomplete(i) => IResult::Incomplete(i),
         // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
         // // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),

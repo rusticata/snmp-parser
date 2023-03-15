@@ -1,10 +1,9 @@
 #[macro_use]
 extern crate hex_literal;
-extern crate der_parser;
 extern crate nom;
 extern crate snmp_parser;
 
-use der_parser::oid::Oid;
+use asn1_rs::Oid;
 use snmp_parser::*;
 use std::net::Ipv4Addr;
 
@@ -49,7 +48,7 @@ fn test_snmp_v1_req() {
             err_index: 0,
             var: vec![SnmpVariable {
                 oid: Oid::from(&[1, 3, 6, 1, 2, 1, 1, 2, 0]).unwrap(),
-                val: ObjectSyntax::Empty,
+                val: VarBindValue::Unspecified,
             }],
         }),
     };

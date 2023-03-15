@@ -1,4 +1,4 @@
-use der_parser::error::BerError;
+use asn1_rs::Error;
 use nom::error::{ErrorKind, ParseError};
 use std::convert::From;
 
@@ -16,10 +16,12 @@ pub enum SnmpError {
     InvalidHeaderData,
     #[error("Invalid SNMPv3 scoped PDU")]
     InvalidScopedPduData,
+    #[error("Invalid SNMPv3 security model")]
+    InvalidSecurityModel,
     #[error("Nom error")]
     NomError(ErrorKind),
     #[error("BER error")]
-    BerError(BerError),
+    BerError(Error),
 }
 
 impl<I> ParseError<I> for SnmpError {
@@ -31,8 +33,8 @@ impl<I> ParseError<I> for SnmpError {
     }
 }
 
-impl From<BerError> for SnmpError {
-    fn from(e: BerError) -> SnmpError {
+impl From<Error> for SnmpError {
+    fn from(e: Error) -> SnmpError {
         SnmpError::BerError(e)
     }
 }

@@ -23,8 +23,7 @@ include = [
 ]
 
 [dependencies]
-asn1-rs = "0.4"
-der-parser = "8.0"
+asn1-rs = "0.5"
 nom = "7.0"
 rusticata-macros = "4.0"
 thiserror = "1.0"

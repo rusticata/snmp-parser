@@ -8,17 +8,13 @@
 //! See also:
 //!   - [RFC2578](https://tools.ietf.org/html/rfc2578): Structure of Management Information Version 2 (SMIv2)
 
-use std::fmt;
-
-use asn1_rs::FromBer;
-use asn1_rs::Sequence;
-use der_parser::ber::*;
-use der_parser::error::*;
+use asn1_rs::{Error, FromBer, Sequence};
 use nom::combinator::{map, map_res};
 use nom::{Err, IResult};
+use std::fmt;
 
 use crate::error::SnmpError;
-use crate::snmp::{parse_ber_octetstring_as_slice, parse_snmp_v2c_pdu, SnmpPdu};
+use crate::snmp::{parse_snmp_v2c_pdu, SnmpPdu};
 pub use crate::usm::{parse_usm_security_parameters, UsmSecurityParameters};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -96,7 +92,7 @@ impl<'a> FromBer<'a> for HeaderData {
             let msg_flags = if b.len() == 1 {
                 b[0]
             } else {
-                return Err(Err::Error(BerError::BerValueError));
+                return Err(Err::Error(Error::BerValueError));
             };
             let (i, msg_security_model) = map(u32::from_ber, SecurityModel)(i)?;
             let hdr = HeaderData {
@@ -127,27 +123,24 @@ pub struct ScopedPdu<'a> {
 pub(crate) fn parse_snmp_v3_data<'a>(
     i: &'a [u8],
     hdr: &HeaderData,
-) -> IResult<&'a [u8], ScopedPduData<'a>, BerError> {
+) -> IResult<&'a [u8], ScopedPduData<'a>, SnmpError> {
     if hdr.is_encrypted() {
-        map(<&[u8]>::from_ber, ScopedPduData::Encrypted)(i)
+        map(<&[u8]>::from_ber, ScopedPduData::Encrypted)(i).map_err(Err::convert)
     } else {
         parse_snmp_v3_plaintext_pdu(i)
     }
 }
 
 pub(crate) fn parse_secp<'a>(
-    x: &BerObject<'a>,
+    i: &'a [u8],
     hdr: &HeaderData,
-) -> Result<SecurityParameters<'a>, BerError> {
-    match x.as_slice() {
-        Ok(i) => match hdr.msg_security_model {
-            SecurityModel::USM => match parse_usm_security_parameters(i) {
-                Ok((_, usm)) => Ok(SecurityParameters::USM(usm)),
-                _ => Err(BerError::BerValueError),
-            },
-            _ => Ok(SecurityParameters::Raw(i)),
+) -> Result<SecurityParameters<'a>, SnmpError> {
+    match hdr.msg_security_model {
+        SecurityModel::USM => match parse_usm_security_parameters(i) {
+            Ok((_, usm)) => Ok(SecurityParameters::USM(usm)),
+            _ => Err(SnmpError::InvalidSecurityModel),
         },
-        _ => Err(BerError::BerValueError),
+        _ => Ok(SecurityParameters::Raw(i)),
     }
 }
 
@@ -174,11 +167,12 @@ pub(crate) fn parse_secp<'a>(
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v3(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
-    parse_ber_sequence_defined_g(|i, _| {
-        let (i, version) = parse_ber_u32(i)?;
+pub fn parse_snmp_v3(bytes: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
+    Sequence::from_der_and_then(bytes, |i| {
+        let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         let (i, header_data) = parse_snmp_v3_headerdata(i)?;
-        let (i, secp) = map_res(parse_ber_octetstring, |x| parse_secp(&x, &header_data))(i)?;
+        let (i, secp) =
+            map_res(<&[u8]>::from_ber, |x| parse_secp(x, &header_data))(i).map_err(Err::convert)?;
         let (i, data) = parse_snmp_v3_data(i, &header_data)?;
         let msg = SnmpV3Message {
             version,
@@ -187,19 +181,18 @@ pub fn parse_snmp_v3(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
             data,
         };
         Ok((i, msg))
-    })(i)
-    .map_err(Err::convert)
+    })
 }
 
 #[inline]
-pub(crate) fn parse_snmp_v3_headerdata(i: &[u8]) -> IResult<&[u8], HeaderData, BerError> {
-    HeaderData::from_ber(i)
+pub(crate) fn parse_snmp_v3_headerdata(i: &[u8]) -> IResult<&[u8], HeaderData, SnmpError> {
+    HeaderData::from_ber(i).map_err(Err::convert)
 }
 
-fn parse_snmp_v3_plaintext_pdu(i: &[u8]) -> IResult<&[u8], ScopedPduData, BerError> {
-    parse_ber_sequence_defined_g(|i, _| {
-        let (i, ctx_engine_id) = parse_ber_octetstring_as_slice(i)?;
-        let (i, ctx_engine_name) = parse_ber_octetstring_as_slice(i)?;
+fn parse_snmp_v3_plaintext_pdu(bytes: &[u8]) -> IResult<&[u8], ScopedPduData, SnmpError> {
+    Sequence::from_der_and_then(bytes, |i| {
+        let (i, ctx_engine_id) = <&[u8]>::from_ber(i).map_err(Err::convert)?;
+        let (i, ctx_engine_name) = <&[u8]>::from_ber(i).map_err(Err::convert)?;
         let (i, data) = parse_snmp_v2c_pdu(i)?;
         let pdu = ScopedPdu {
             ctx_engine_id,
@@ -207,5 +200,5 @@ fn parse_snmp_v3_plaintext_pdu(i: &[u8]) -> IResult<&[u8], ScopedPduData, BerErr
             data,
         };
         Ok((i, ScopedPduData::Plaintext(pdu)))
-    })(i)
+    })
 }
