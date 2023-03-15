@@ -26,6 +26,11 @@ and is part of the [Rusticata](https://github.com/rusticata) project.
 
 ## Changes
 
+### 0.9.0
+
+- Convert to asn1-rs
+- Set MSRV to 1.57
+
 ### 0.8.0
 
 - Upgrade to nom 7 / der-parser 6
