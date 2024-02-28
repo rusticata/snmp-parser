@@ -26,6 +26,10 @@ and is part of the [Rusticata](https://github.com/rusticata) project.
 
 ## Changes
 
+### 0.10.0
+
+- Update asn1-rs to 0.6
+
 ### 0.9.0
 
 - Convert to asn1-rs
