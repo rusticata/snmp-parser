@@ -557,19 +557,16 @@ pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> 
     match Header::from_ber(i) {
         Ok((rem, hdr)) => {
             match PduType(hdr.tag().0) {
-                PduType::GetRequest |
-                PduType::GetNextRequest |
-                PduType::Response |
-                PduType::SetRequest     => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
-                PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
-                _                       => Err(Err::Error(SnmpError::InvalidPduType)),
+                PduType::GetRequest
+                | PduType::GetNextRequest
+                | PduType::Response
+                | PduType::SetRequest => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
+                PduType::TrapV1 => parse_snmp_v1_trap_pdu(rem),
+                _ => Err(Err::Error(SnmpError::InvalidPduType)),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
-        },
-        Err(e)        => Err(Err::convert(e))
-        // IResult::Incomplete(i) => IResult::Incomplete(i),
-        // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
-        // // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),
+        }
+        Err(e) => Err(Err::convert(e)),
     }
 }
 
@@ -613,22 +610,19 @@ pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError>
     match Header::from_ber(i) {
         Ok((rem, hdr)) => {
             match PduType(hdr.tag().0) {
-                PduType::GetRequest |
-                PduType::GetNextRequest |
-                PduType::Response |
-                PduType::SetRequest |
-                PduType::InformRequest |
-                PduType::TrapV2 |
-                PduType::Report         => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
+                PduType::GetRequest
+                | PduType::GetNextRequest
+                | PduType::Response
+                | PduType::SetRequest
+                | PduType::InformRequest
+                | PduType::TrapV2
+                | PduType::Report => parse_snmp_v1_generic_pdu(rem, PduType(hdr.tag().0)),
                 PduType::GetBulkRequest => parse_snmp_v1_bulk_pdu(rem),
-                PduType::TrapV1         => parse_snmp_v1_trap_pdu(rem),
-                _                       => Err(Err::Error(SnmpError::InvalidPduType)),
+                PduType::TrapV1 => parse_snmp_v1_trap_pdu(rem),
+                _ => Err(Err::Error(SnmpError::InvalidPduType)),
                 // _                       => { return IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidPdu))); },
             }
-        },
-        Err(e)        => Err(Err::convert(e))
-        // IResult::Incomplete(i) => IResult::Incomplete(i),
-        // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(129))),
-        // // IResult::Error(_)      => IResult::Error(error_code!(ErrorKind::Custom(SnmpError::InvalidScopedPduData))),
+        }
+        Err(e) => Err(Err::convert(e)),
     }
 }
