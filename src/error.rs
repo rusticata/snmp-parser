@@ -21,7 +21,7 @@ pub enum SnmpError {
     #[error("Nom error")]
     NomError(ErrorKind),
     #[error("BER error")]
-    BerError(Error),
+    BerError(#[from] Error),
 }
 
 impl<I> ParseError<I> for SnmpError {
@@ -30,12 +30,6 @@ impl<I> ParseError<I> for SnmpError {
     }
     fn append(_input: I, kind: ErrorKind, _other: Self) -> Self {
         SnmpError::NomError(kind)
-    }
-}
-
-impl From<Error> for SnmpError {
-    fn from(e: Error) -> SnmpError {
-        SnmpError::BerError(e)
     }
 }
 
