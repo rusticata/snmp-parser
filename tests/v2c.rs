@@ -3,7 +3,6 @@ extern crate pretty_assertions;
 extern crate nom;
 extern crate snmp_parser;
 
-use asn1_rs::Oid;
 use snmp_parser::*;
 
 static SNMPV2_GET: &[u8] = include_bytes!("../assets/snmpv2c-get-response.bin");
