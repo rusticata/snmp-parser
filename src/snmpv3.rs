@@ -10,7 +10,7 @@
 
 use asn1_rs::{Error, FromBer, Sequence};
 use nom::combinator::{map, map_res};
-use nom::{Err, IResult};
+use nom::{Err, Finish, IResult};
 use std::fmt;
 
 use crate::error::SnmpError;
@@ -167,7 +167,11 @@ pub(crate) fn parse_secp<'a>(
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v3(bytes: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
+pub fn parse_snmp_v3(bytes: &[u8]) -> Result<(&[u8], SnmpV3Message), SnmpError> {
+    internal_parse_snmp_v3(bytes).finish()
+}
+
+fn internal_parse_snmp_v3(bytes: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         let (i, header_data) = parse_snmp_v3_headerdata(i)?;

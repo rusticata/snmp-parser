@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate hex_literal;
-extern crate nom;
 extern crate snmp_parser;
 
 use snmp_parser::*;

@@ -13,7 +13,7 @@ use asn1_rs::{
     Any, BitString, Class, Error, FromBer, Header, Implicit, Integer, Sequence, Tag, TaggedValue,
 };
 use nom::combinator::map;
-use nom::{Err, IResult};
+use nom::{Err, Finish, IResult};
 use std::convert::TryFrom;
 use std::net::Ipv4Addr;
 use std::slice::Iter;
@@ -534,7 +534,11 @@ fn parse_snmp_v1_trap_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v1(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+pub fn parse_snmp_v1(bytes: &[u8]) -> Result<(&[u8], SnmpMessage), SnmpError> {
+    internal_parse_snmp_v1(bytes).finish()
+}
+
+fn internal_parse_snmp_v1(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         if version != 0 {
@@ -588,7 +592,11 @@ pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> 
 ///                 ANY
 ///         }
 /// </pre>
-pub fn parse_snmp_v2c(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+pub fn parse_snmp_v2c(bytes: &[u8]) -> Result<(&[u8], SnmpMessage), SnmpError> {
+    internal_parse_snmp_v2c(bytes).finish()
+}
+
+fn internal_parse_snmp_v2c(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         if version != 1 {

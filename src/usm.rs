@@ -2,7 +2,7 @@
 
 use crate::parse_ber_octetstring_as_str;
 use asn1_rs::{Error, FromBer, Sequence};
-use nom::IResult;
+use nom::{Finish, IResult};
 
 #[derive(Debug, PartialEq)]
 pub struct UsmSecurityParameters<'a> {
@@ -14,7 +14,15 @@ pub struct UsmSecurityParameters<'a> {
     pub msg_privacy_parameters: &'a [u8],
 }
 
-pub fn parse_usm_security_parameters(bytes: &[u8]) -> IResult<&[u8], UsmSecurityParameters, Error> {
+pub fn parse_usm_security_parameters(
+    bytes: &[u8],
+) -> Result<(&[u8], UsmSecurityParameters), Error> {
+    internal_parse_usm_security_parameters(bytes).finish()
+}
+
+fn internal_parse_usm_security_parameters(
+    bytes: &[u8],
+) -> IResult<&[u8], UsmSecurityParameters, Error> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, msg_authoritative_engine_id) = <&[u8]>::from_ber(i)?;
         let (i, msg_authoritative_engine_boots) = u32::from_ber(i)?;

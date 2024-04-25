@@ -3,7 +3,7 @@ use crate::snmp::*;
 use crate::snmpv3::*;
 use asn1_rs::{Any, FromBer, Tag};
 use nom::combinator::map_res;
-use nom::{Err, IResult};
+use nom::{Err, Finish, IResult};
 
 #[derive(Debug, PartialEq)]
 pub enum SnmpGenericMessage<'a> {
@@ -47,7 +47,12 @@ fn parse_snmp_v3_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpErro
     Ok((i, msg))
 }
 
-pub fn parse_snmp_generic_message(i: &[u8]) -> IResult<&[u8], SnmpGenericMessage, SnmpError> {
+/// Parse any valid SNMP message.
+pub fn parse_snmp_generic_message(i: &[u8]) -> Result<(&[u8], SnmpGenericMessage), SnmpError> {
+    internal_parse_snmp_generic_message(i).finish()
+}
+
+fn internal_parse_snmp_generic_message(i: &[u8]) -> IResult<&[u8], SnmpGenericMessage, SnmpError> {
     let (rem, any) = Any::from_ber(i).or(Err(Err::Error(SnmpError::InvalidMessage)))?;
     if any.tag() != Tag::Sequence {
         return Err(Err::Error(SnmpError::InvalidMessage));
