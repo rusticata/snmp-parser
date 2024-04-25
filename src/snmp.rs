@@ -8,10 +8,9 @@
 //!   - [RFC3416](https://tools.ietf.org/html/rfc3416): SNMP v2
 //!   - [RFC2570](https://tools.ietf.org/html/rfc2570): Introduction to SNMP v3
 
-use crate::error::SnmpError;
+use crate::{error::SnmpError, Oid};
 use asn1_rs::{
-    Any, BitString, Class, Error, FromBer, Header, Implicit, Integer, Oid, Sequence, Tag,
-    TaggedValue,
+    Any, BitString, Class, Error, FromBer, Header, Implicit, Integer, Sequence, Tag, TaggedValue,
 };
 use nom::combinator::map;
 use nom::{Err, IResult};

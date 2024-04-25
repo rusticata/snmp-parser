@@ -48,3 +48,6 @@ pub mod snmpv3;
 pub use generic::*;
 pub use snmp::*;
 pub use snmpv3::*;
+
+// re-exports to prevent public dependency on asn1_rs
+pub use asn1_rs::{Oid, OidParseError};

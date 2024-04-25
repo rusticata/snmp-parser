@@ -3,7 +3,6 @@ extern crate hex_literal;
 extern crate nom;
 extern crate snmp_parser;
 
-use asn1_rs::Oid;
 use snmp_parser::*;
 use std::net::Ipv4Addr;
 
