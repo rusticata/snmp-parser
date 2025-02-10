@@ -25,7 +25,7 @@ include = [
 
 [dependencies]
 asn1-rs = "0.7"
-nom = "7.1"
+nom = "8.0"
 rusticata-macros = "4.0"
 thiserror = "2.0"
 
