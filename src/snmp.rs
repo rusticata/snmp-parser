@@ -182,13 +182,13 @@ pub struct SnmpMessage<'a> {
 }
 
 impl<'a> SnmpGenericPdu<'a> {
-    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+    pub fn vars_iter(&'a self) -> Iter<'a, SnmpVariable<'a>> {
         self.var.iter()
     }
 }
 
 impl<'a> SnmpTrapPdu<'a> {
-    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+    pub fn vars_iter(&'a self) -> Iter<'a, SnmpVariable<'a>> {
         self.var.iter()
     }
 }
@@ -202,7 +202,7 @@ impl<'a> SnmpPdu<'a> {
         }
     }
 
-    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+    pub fn vars_iter(&'a self) -> Iter<'a, SnmpVariable<'a>> {
         match *self {
             SnmpPdu::Generic(ref pdu) => pdu.var.iter(),
             SnmpPdu::Bulk(ref pdu) => pdu.var.iter(),
@@ -216,7 +216,7 @@ impl<'a> SnmpMessage<'a> {
         self.pdu.pdu_type()
     }
 
-    pub fn vars_iter(&'a self) -> Iter<SnmpVariable> {
+    pub fn vars_iter(&'a self) -> Iter<'a, SnmpVariable<'a>> {
         self.pdu.vars_iter()
     }
 }
