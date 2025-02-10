@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "snmp-parser"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "asn1-rs",
  "hex-literal",

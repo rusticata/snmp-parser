@@ -26,6 +26,18 @@ and is part of the [Rusticata](https://github.com/rusticata) project.
 
 ## Changes
 
+### 0.11.0
+
+- Update asn1-rs to 0.7
+- Update thiserror to 2.0
+- Fix clippy warnings: elided lifetime has a name
+- Use `#[from]` instead of From impl for asn1 error
+- Re-export `Oid` and `OidParseError`
+- Fix renamed lint
+- Implement `FromBer` for all top-level messages
+
+Thanks: @MattesWhite
+
 ### 0.10.0
 
 - Update asn1-rs to 0.6
