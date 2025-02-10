@@ -1,6 +1,15 @@
-on: [push, pull_request]
-
 name: Continuous integration
+
+on:
+  push:
+  pull_request:
+  merge_group:
+  schedule:
+    - cron: '0 18 * * *'
+
+env:
+  check_ext_rust_version: nightly-2024-06-30
+  # ^ sync with https://github.com/awslabs/cargo-check-external-types/blob/main/rust-toolchain.toml
 
 jobs:
   check:
@@ -13,63 +22,51 @@ jobs:
           - 1.63.0
           - nightly
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - name: Install ${{ matrix.rust }} toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
       - name: Cargo update
         run: cargo update
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
+      - run: RUSTFLAGS="-D warnings" cargo check
 
-  test:
-    name: Test Suite
+  test_features:
+    name: Test suite (with features)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - --all-features
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - run: cargo test ${{ matrix.features }}
 
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - name: Install stable rustfmt
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - name: Install nightly clippy
+        uses: dtolnay/rust-toolchain@nightly
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+          components: clippy
+      - run: cargo clippy -- -D warnings
 
   doc:
     name: Build documentation
@@ -77,13 +74,29 @@ jobs:
     env:
       RUSTDOCFLAGS: --cfg docsrs
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - name: Install nightly rust
+        uses: dtolnay/rust-toolchain@nightly
+      - run: cargo doc --workspace --no-deps --all-features
+
+  semver:
+    name: Check semver compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+
+  check-external-types:
+    name: Validate external types appearing in public API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --workspace --no-deps --all-features
+          toolchain: ${{ env.check_ext_rust_version }}
+      - run: cargo install --locked cargo-check-external-types
+      - run: cargo check-external-types
