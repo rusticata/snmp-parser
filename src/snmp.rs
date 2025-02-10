@@ -172,6 +172,31 @@ pub enum SnmpPdu<'a> {
 }
 
 /// An SNMPv1 or SNMPv2c message
+///
+/// Use the [`FromBer`] trait to parse messages. The method returns the
+/// remaining (unparsed) bytes and the object, or an error.
+///
+/// Function [`parse_snmp_v1`] and [`parse_snmp_v2c`] are also provided, for convenience.
+///
+/// # Examples
+///
+/// ```rust
+/// use snmp_parser::SnmpMessage;
+/// use snmp_parser::asn1_rs::FromBer;
+///
+/// static SNMPV1_REQ: &[u8] = include_bytes!("../assets/snmpv1_req.bin");
+///
+/// # fn main() {
+/// match SnmpMessage::from_ber(&SNMPV1_REQ) {
+///   Ok((_, ref r)) => {
+///     assert!(r.version == 0);
+///     assert!(r.community == String::from("public"));
+///     assert!(r.vars_iter().count() == 1);
+///   },
+///   Err(e) => panic!("{}", e),
+/// }
+/// # }
+/// ```
 #[derive(Debug, PartialEq)]
 pub struct SnmpMessage<'a> {
     /// Version, as raw-encoded: 0 for SNMPv1, 1 for SNMPv2c
@@ -217,6 +242,31 @@ impl<'a> SnmpMessage<'a> {
 
     pub fn vars_iter(&'a self) -> Iter<'a, SnmpVariable<'a>> {
         self.pdu.vars_iter()
+    }
+}
+
+impl<'a> FromBer<'a, SnmpError> for SnmpMessage<'a> {
+    fn from_ber(bytes: &'a [u8]) -> asn1_rs::ParseResult<'a, Self, SnmpError> {
+        // parse a SNMP v1 or V2 message
+        Sequence::from_der_and_then(bytes, |i| {
+            let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
+            if version > 1 {
+                return Err(Err::Error(SnmpError::InvalidVersion));
+            }
+            let (i, community) = parse_ber_octetstring_as_str(i).map_err(Err::convert)?;
+            let (i, pdu) = if version == 0 {
+                parse_snmp_v1_pdu(i)?
+            } else {
+                parse_snmp_v2c_pdu(i)?
+            };
+            let msg = SnmpMessage {
+                version,
+                community: community.to_string(),
+                pdu,
+            };
+            Ok((i, msg))
+        })
+        //.map_err(Err::convert)
     }
 }
 

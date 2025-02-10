@@ -52,6 +52,29 @@ pub enum SecurityParameters<'a> {
 }
 
 /// An SNMPv3 message
+///
+/// # Examples
+///
+/// ```rust
+/// use snmp_parser::{ScopedPduData, SecurityModel, SnmpV3Message};
+/// use snmp_parser::asn1_rs::FromBer;
+///
+/// static SNMPV3_REQ: &[u8] = include_bytes!("../assets/snmpv3_req.bin");
+///
+/// # fn main() {
+/// match SnmpV3Message::from_ber(&SNMPV3_REQ) {
+///   Ok((_, ref r)) => {
+///     assert!(r.version == 3);
+///     assert!(r.header_data.msg_security_model == SecurityModel::USM);
+///     match r.data {
+///       ScopedPduData::Plaintext(ref _pdu) => { },
+///       ScopedPduData::Encrypted(_) => (),
+///     }
+///   },
+///   Err(e) => panic!("{}", e),
+/// }
+/// # }
+/// ```
 #[derive(Debug, PartialEq)]
 pub struct SnmpV3Message<'a> {
     /// Version, as raw-encoded: 3 for SNMPv3
@@ -59,6 +82,25 @@ pub struct SnmpV3Message<'a> {
     pub header_data: HeaderData,
     pub security_params: SecurityParameters<'a>,
     pub data: ScopedPduData<'a>,
+}
+
+impl<'a> FromBer<'a, SnmpError> for SnmpV3Message<'a> {
+    fn from_ber(bytes: &'a [u8]) -> asn1_rs::ParseResult<'a, Self, SnmpError> {
+        Sequence::from_der_and_then(bytes, |i| {
+            let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
+            let (i, header_data) = parse_snmp_v3_headerdata(i)?;
+            let (i, secp) = map_res(<&[u8]>::from_ber, |x| parse_secp(x, &header_data))(i)
+                .map_err(Err::convert)?;
+            let (i, data) = parse_snmp_v3_data(i, &header_data)?;
+            let msg = SnmpV3Message {
+                version,
+                header_data,
+                security_params: secp,
+                data,
+            };
+            Ok((i, msg))
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -168,20 +210,7 @@ pub(crate) fn parse_secp<'a>(
 /// # }
 /// ```
 pub fn parse_snmp_v3(bytes: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
-    Sequence::from_der_and_then(bytes, |i| {
-        let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
-        let (i, header_data) = parse_snmp_v3_headerdata(i)?;
-        let (i, secp) =
-            map_res(<&[u8]>::from_ber, |x| parse_secp(x, &header_data))(i).map_err(Err::convert)?;
-        let (i, data) = parse_snmp_v3_data(i, &header_data)?;
-        let msg = SnmpV3Message {
-            version,
-            header_data,
-            security_params: secp,
-            data,
-        };
-        Ok((i, msg))
-    })
+    SnmpV3Message::from_ber(bytes)
 }
 
 #[inline]
