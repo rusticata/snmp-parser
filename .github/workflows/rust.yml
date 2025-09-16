@@ -22,7 +22,7 @@ jobs:
           - 1.63.0
           - nightly
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install ${{ matrix.rust }} toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -39,7 +39,7 @@ jobs:
         features:
           - --all-features
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
       - run: cargo test ${{ matrix.features }}
@@ -48,7 +48,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install stable rustfmt
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -59,7 +59,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install nightly clippy
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -72,7 +72,7 @@ jobs:
     env:
       RUSTDOCFLAGS: --cfg docsrs
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install nightly rust
         uses: dtolnay/rust-toolchain@nightly
       - run: cargo doc --workspace --no-deps --all-features
@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
 
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
