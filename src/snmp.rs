@@ -457,7 +457,7 @@ pub(crate) fn parse_ber_octetstring_as_str(i: &[u8]) -> IResult<&[u8], &str, Err
     Ok((rem, s))
 }
 
-fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable>, Error> {
+fn parse_varbind_list(i: &[u8]) -> IResult<&[u8], Vec<SnmpVariable<'_>>, Error> {
     // parse_ber_sequence_of_v(parse_varbind)(i)
     <Vec<SnmpVariable>>::from_ber(i)
 }
@@ -499,7 +499,7 @@ fn parse_timeticks(i: &[u8]) -> IResult<&[u8], TimeTicks, Error> {
     Ok((rem, tagged.into_inner()))
 }
 
-fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu, SnmpError> {
+fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu<'_>, SnmpError> {
     let (i, req_id) = u32::from_ber(pdu).map_err(Err::convert)?;
     let (i, err) = map(u32::from_ber, ErrorStatus)(i).map_err(Err::convert)?;
     let (i, err_index) = u32::from_ber(i).map_err(Err::convert)?;
@@ -514,7 +514,7 @@ fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu
     Ok((i, pdu))
 }
 
-fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
+fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu<'_>, SnmpError> {
     let (i, req_id) = u32::from_ber(i).map_err(Err::convert)?;
     let (i, non_repeaters) = u32::from_ber(i).map_err(Err::convert)?;
     let (i, max_repetitions) = u32::from_ber(i).map_err(Err::convert)?;
@@ -528,7 +528,7 @@ fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
     Ok((i, SnmpPdu::Bulk(pdu)))
 }
 
-fn parse_snmp_v1_trap_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
+fn parse_snmp_v1_trap_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu<'_>, SnmpError> {
     let (i, enterprise) = Oid::from_ber(i).map_err(Err::convert)?;
     let (i, agent_addr) = NetworkAddress::from_ber(i).map_err(Err::convert)?;
     let (i, generic_trap) = u32::from_ber(i).map_err(Err::convert)?;
@@ -584,7 +584,7 @@ fn parse_snmp_v1_trap_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v1(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+pub fn parse_snmp_v1(bytes: &[u8]) -> IResult<&[u8], SnmpMessage<'_>, SnmpError> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         if version != 0 {
@@ -602,7 +602,7 @@ pub fn parse_snmp_v1(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
     //.map_err(Err::convert)
 }
 
-pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
+pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu<'_>, SnmpError> {
     match Header::from_ber(i) {
         Ok((rem, hdr)) => {
             match PduType(hdr.tag().0) {
@@ -638,7 +638,7 @@ pub(crate) fn parse_snmp_v1_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> 
 ///                 ANY
 ///         }
 /// </pre>
-pub fn parse_snmp_v2c(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+pub fn parse_snmp_v2c(bytes: &[u8]) -> IResult<&[u8], SnmpMessage<'_>, SnmpError> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, version) = u32::from_ber(i).map_err(Err::convert)?;
         if version != 1 {
@@ -655,7 +655,7 @@ pub fn parse_snmp_v2c(bytes: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
     })
 }
 
-pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu, SnmpError> {
+pub(crate) fn parse_snmp_v2c_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu<'_>, SnmpError> {
     match Header::from_ber(i) {
         Ok((rem, hdr)) => {
             match PduType(hdr.tag().0) {

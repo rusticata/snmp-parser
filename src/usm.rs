@@ -14,7 +14,9 @@ pub struct UsmSecurityParameters<'a> {
     pub msg_privacy_parameters: &'a [u8],
 }
 
-pub fn parse_usm_security_parameters(bytes: &[u8]) -> IResult<&[u8], UsmSecurityParameters, Error> {
+pub fn parse_usm_security_parameters(
+    bytes: &[u8],
+) -> IResult<&[u8], UsmSecurityParameters<'_>, Error> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, msg_authoritative_engine_id) = <&[u8]>::from_ber(i)?;
         let (i, msg_authoritative_engine_boots) = u32::from_ber(i)?;

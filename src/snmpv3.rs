@@ -209,7 +209,7 @@ pub(crate) fn parse_secp<'a>(
 /// }
 /// # }
 /// ```
-pub fn parse_snmp_v3(bytes: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
+pub fn parse_snmp_v3(bytes: &[u8]) -> IResult<&[u8], SnmpV3Message<'_>, SnmpError> {
     SnmpV3Message::from_ber(bytes)
 }
 
@@ -218,7 +218,7 @@ pub(crate) fn parse_snmp_v3_headerdata(i: &[u8]) -> IResult<&[u8], HeaderData, S
     HeaderData::from_ber(i).map_err(Err::convert)
 }
 
-fn parse_snmp_v3_plaintext_pdu(bytes: &[u8]) -> IResult<&[u8], ScopedPduData, SnmpError> {
+fn parse_snmp_v3_plaintext_pdu(bytes: &[u8]) -> IResult<&[u8], ScopedPduData<'_>, SnmpError> {
     Sequence::from_der_and_then(bytes, |i| {
         let (i, ctx_engine_id) = <&[u8]>::from_ber(i).map_err(Err::convert)?;
         let (i, ctx_engine_name) = <&[u8]>::from_ber(i).map_err(Err::convert)?;

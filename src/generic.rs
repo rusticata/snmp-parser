@@ -69,7 +69,7 @@ impl<'a> FromBer<'a, SnmpError> for SnmpGenericMessage<'a> {
     }
 }
 
-fn parse_snmp_v1_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+fn parse_snmp_v1_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpMessage<'_>, SnmpError> {
     let (i, community) = parse_ber_octetstring_as_str(i).map_err(Err::convert)?;
     let (i, pdu) = parse_snmp_v1_pdu(i)?;
     let msg = SnmpMessage {
@@ -80,7 +80,7 @@ fn parse_snmp_v1_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError>
     Ok((i, msg))
 }
 
-fn parse_snmp_v2c_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError> {
+fn parse_snmp_v2c_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpMessage<'_>, SnmpError> {
     let (i, community) = parse_ber_octetstring_as_str(i).map_err(Err::convert)?;
     let (i, pdu) = parse_snmp_v2c_pdu(i)?;
     let msg = SnmpMessage {
@@ -91,7 +91,7 @@ fn parse_snmp_v2c_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpMessage, SnmpError
     Ok((i, msg))
 }
 
-fn parse_snmp_v3_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpError> {
+fn parse_snmp_v3_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpV3Message<'_>, SnmpError> {
     let (i, hdr) = parse_snmp_v3_headerdata(i)?;
     let (i, secp) = map_res(<&[u8]>::from_ber, |x| parse_secp(x, &hdr))(i).map_err(Err::convert)?;
     let (i, data) = parse_snmp_v3_data(i, &hdr)?;
@@ -107,6 +107,6 @@ fn parse_snmp_v3_pdu_content(i: &[u8]) -> IResult<&[u8], SnmpV3Message, SnmpErro
 /// Parse an SNMP messsage, accepting v1, v2c or v3 messages
 ///
 /// This function is equivalent to `SnmpGenericMessage::from_ber`
-pub fn parse_snmp_generic_message(i: &[u8]) -> IResult<&[u8], SnmpGenericMessage, SnmpError> {
+pub fn parse_snmp_generic_message(i: &[u8]) -> IResult<&[u8], SnmpGenericMessage<'_>, SnmpError> {
     SnmpGenericMessage::from_ber(i)
 }
