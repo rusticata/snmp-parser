@@ -26,9 +26,7 @@ jobs:
       - name: Install ${{ matrix.rust }} toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
       - name: Cargo update
         run: cargo update
       - run: RUSTFLAGS="-D warnings" cargo check
