@@ -30,7 +30,7 @@ rusticata-macros = "4.0"
 thiserror = "2.0"
 
 [dev-dependencies]
-hex-literal = "0.4"
+hex-literal = "1.0"
 pretty_assertions = "1.0"
 
 [package.metadata.cargo_check_external_types]
