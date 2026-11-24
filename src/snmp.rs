@@ -140,7 +140,7 @@ impl fmt::Debug for ErrorStatus {
 #[derive(Debug, PartialEq)]
 pub struct SnmpGenericPdu<'a> {
     pub pdu_type: PduType,
-    pub req_id: u32,
+    pub req_id: i32,
     pub err: ErrorStatus,
     pub err_index: u32,
     pub var: Vec<SnmpVariable<'a>>,
@@ -148,7 +148,7 @@ pub struct SnmpGenericPdu<'a> {
 
 #[derive(Debug, PartialEq)]
 pub struct SnmpBulkPdu<'a> {
-    pub req_id: u32,
+    pub req_id: i32,
     pub non_repeaters: u32,
     pub max_repetitions: u32,
     pub var: Vec<SnmpVariable<'a>>,
@@ -500,7 +500,7 @@ fn parse_timeticks(i: &[u8]) -> IResult<&[u8], TimeTicks, Error> {
 }
 
 fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu<'_>, SnmpError> {
-    let (i, req_id) = u32::from_ber(pdu).map_err(Err::convert)?;
+    let (i, req_id) = i32::from_ber(pdu).map_err(Err::convert)?;
     let (i, err) = map(u32::from_ber, ErrorStatus)(i).map_err(Err::convert)?;
     let (i, err_index) = u32::from_ber(i).map_err(Err::convert)?;
     let (i, var) = parse_varbind_list(i).map_err(Err::convert)?;
@@ -515,7 +515,7 @@ fn parse_snmp_v1_generic_pdu(pdu: &[u8], tag: PduType) -> IResult<&[u8], SnmpPdu
 }
 
 fn parse_snmp_v1_bulk_pdu(i: &[u8]) -> IResult<&[u8], SnmpPdu<'_>, SnmpError> {
-    let (i, req_id) = u32::from_ber(i).map_err(Err::convert)?;
+    let (i, req_id) = i32::from_ber(i).map_err(Err::convert)?;
     let (i, non_repeaters) = u32::from_ber(i).map_err(Err::convert)?;
     let (i, max_repetitions) = u32::from_ber(i).map_err(Err::convert)?;
     let (i, var) = parse_varbind_list(i).map_err(Err::convert)?;
